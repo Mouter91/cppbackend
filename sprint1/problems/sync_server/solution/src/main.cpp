@@ -43,7 +43,7 @@ StringResponse MakeStringResponse(http::status status, std::string_view body, un
                                   bool keep_alive,
                                   std::string_view content_type = ContentType::TEXT_HTML) {
     StringResponse response(status, http_version);
-    response.set(http::field::content_type, content_type);
+    response.set(http::field::content_type, std::string(content_type));
     response.body() = body;
     response.content_length(body.size());
     response.keep_alive(keep_alive);
@@ -61,7 +61,7 @@ StringResponse HandleRequest(StringRequest&& req) {
     };
 
     if (req.method() == http::verb::get || req.method() == http::verb::head) {
-        std::string target = req.target();
+        std::string target = std::string(req.target());
         if (!target.empty() && target[0] == '/') {
             target.erase(0, 1);
         }
