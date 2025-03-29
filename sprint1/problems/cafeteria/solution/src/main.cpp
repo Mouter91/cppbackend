@@ -59,7 +59,7 @@ void PrintHotDogResult(const Result<HotDog>& result, Clock::duration order_durat
 std::vector<HotDog> PrepareHotDogs(int num_orders, unsigned num_threads) {
     net::io_context io{static_cast<int>(num_threads)};
 
-    Cafeteria cafeteria{io};
+    auto cafeteria = std::make_shared<Cafeteria>(io);
 
     // Мьютекс для синхронизации доступа к вектору hotdogs
     std::mutex mut;
@@ -85,7 +85,7 @@ std::vector<HotDog> PrepareHotDogs(int num_orders, unsigned num_threads) {
                 start.arrive_and_wait();
             }
 
-            cafeteria.OrderHotDog([&hotdogs, &mut, start_time](Result<HotDog> result) {
+            cafeteria->OrderHotDog([&hotdogs, &mut, start_time](Result<HotDog> result) {
                 const auto duration = Clock::now() - start_time;
                 PrintHotDogResult(result, duration);
                 if (result.HasValue()) {

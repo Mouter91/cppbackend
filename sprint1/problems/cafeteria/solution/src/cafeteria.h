@@ -1,77 +1,63 @@
 #pragma once
 #include <boost/asio/dispatch.hpp>
-#include <stdexcept>
-#ifdef _WIN32
-#include <sdkddkver.h>
-#endif
-
-#include <boost/asio/io_context.hpp>
-#include <boost/asio/steady_timer.hpp>
 #include <boost/asio/strand.hpp>
+#include <boost/asio/steady_timer.hpp>
 #include <memory>
-
+#include <stdexcept>
 #include "hotdog.h"
 #include "result.h"
 
 namespace net = boost::asio;
 
-
-// Функция-обработчик операции приготовления хот-дога
 using HotDogHandler = std::function<void(Result<HotDog> hot_dog)>;
 
-// Класс "Кафетерий". Готовит хот-доги
-class Cafeteria {
+class Cafeteria : public std::enable_shared_from_this<Cafeteria> {
 public:
     explicit Cafeteria(net::io_context& io)
-        : io_{io} {
+        : io_(io),
+          strand_(net::make_strand(io)) {
     }
 
-    // Асинхронно готовит хот-дог и вызывает handler, как только хот-дог будет готов.
-    // Этот метод может быть вызван из произвольного потока
     void OrderHotDog(HotDogHandler handler) {
+        auto self = shared_from_this();
+        
         auto sausage = store_.GetSausage();
         auto bread = store_.GetBread();
 
-        auto check_ready = [this, bread, sausage, handler]() {
+        auto check_ready = [self, bread, sausage, handler]() {
             if (bread->IsCooked() && sausage->IsCooked()) {
                 try {
-                    auto hotdog = std::make_shared<HotDog>(++id_counter, sausage, bread);
-                    net::dispatch(io_, [handler, hotdog]() {
-                        handler(Result<HotDog>(*hotdog));  // Успех
+                    auto hotdog = std::make_shared<HotDog>(++self->id_counter_, sausage, bread);
+                    net::dispatch(self->io_, [handler, hotdog]() {
+                        handler(Result<HotDog>(*hotdog));
                     });
                 } catch (...) {
-                    net::dispatch(io_, [handler]() {
-                        handler(Result<HotDog>::FromCurrentException());  // Ошибка
+                    net::dispatch(self->io_, [handler]() {
+                        handler(Result<HotDog>::FromCurrentException());
                     });
                 }
             }
         };
 
-        net::post(io_, [this, sausage, check_ready]() {
-            sausage->StartFry(*gas_cooker_, [&, sausage]() {
+        net::post(strand_, [self, sausage, check_ready]() {
+            sausage->StartFry(*self->gas_cooker_, [sausage, check_ready]() {
                 sausage->StopFry();
                 check_ready();
             });
         });
 
-        net::post(io_, [this, bread, check_ready]() {
-            bread->StartBake(*gas_cooker_, [&, bread]() {
+        net::post(strand_, [self, bread, check_ready]() {
+            bread->StartBake(*self->gas_cooker_, [bread, check_ready]() {
                 bread->StopBaking();
                 check_ready();
             });
         });
     }
 
-
-
 private:
-    std::atomic<int> id_counter = 0;
+    std::atomic<int> id_counter_ = 0;
     net::io_context& io_;
-    // Используется для создания ингредиентов хот-дога
+    net::strand<net::io_context::executor_type> strand_;
     Store store_;
-    // Газовая плита. По условию задачи в кафетерии есть только одна газовая плита на 8 горелок
-    // Используйте её для приготовления ингредиентов хот-дога.
-    // Плита создаётся с помощью make_shared, так как GasCooker унаследован от
-    // enable_shared_from_this.
     std::shared_ptr<GasCooker> gas_cooker_ = std::make_shared<GasCooker>(io_);
 };
