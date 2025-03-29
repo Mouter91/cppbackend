@@ -19,7 +19,7 @@ namespace beast = boost::beast;
 namespace http = beast::http;
 namespace sys = boost::system;
 
-void ReportError(beast::error_code ec, std::string_view what) {
+inline void ReportError(beast::error_code ec, std::string_view what) {
     std::cerr << what << ": " << ec.message() << std::endl;
 }
 
