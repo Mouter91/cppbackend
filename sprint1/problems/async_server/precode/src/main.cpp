@@ -38,9 +38,33 @@ StringResponse MakeStringResponse(http::status status, std::string_view body, un
 }
 
 StringResponse HandleRequest(StringRequest&& req) {
-    // Подставьте сюда код из синхронной версии HTTP-сервера
-    return MakeStringResponse(http::status::ok, "OK"sv, req.version(), req.keep_alive());
+    const auto text_response = [&req](http::status status, std::string_view text, bool include_body = true) {
+        StringResponse res = MakeStringResponse(status, text, req.version(), req.keep_alive());
+        if (!include_body) {
+            res.body().clear();
+            res.content_length(text.size());
+        }
+        return res;
+    };
+
+    if (req.method() == http::verb::get || req.method() == http::verb::head) {
+        std::string target = std::string(req.target());
+        if (!target.empty() && target[0] == '/') {
+            target.erase(0, 1);
+        }
+
+        std::string body = "Hello, " + target;
+        return text_response(http::status::ok, body, req.method() == http::verb::get);
+    }
+
+    StringResponse res = MakeStringResponse(http::status::method_not_allowed, "Invalid method", req.version(), req.keep_alive());
+    res.set(http::field::allow, "GET, HEAD");
+    return res;
+
+    // Здесь можно обработать запрос и сформировать ответ, но пока всегда отвечаем: Hello
+    return text_response(http::status::ok, "<strong>Hello</strong>"sv);
 }
+
 
 // Запускает функцию fn на n потоках, включая текущий
 template <typename Fn>

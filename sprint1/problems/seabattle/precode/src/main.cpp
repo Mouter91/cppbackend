@@ -1,3 +1,6 @@
+#include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/address.hpp>
+#include <boost/system/detail/error_code.hpp>
 #ifdef WIN32
 #include <sdkddkver.h>
 #endif
@@ -68,7 +71,66 @@ public:
     }
 
     void StartGame(tcp::socket& socket, bool my_initiative) {
-        // TODO: реализуйте самостоятельно
+        while (!IsGameEnded()) {
+            PrintFields();
+
+            if (my_initiative) {
+                std::string move;
+                do {
+                    std::cout << "Enter your move: ";
+                    std::cin >> move;
+                    
+                } while (!ParseMove(move));
+
+                if (!WriteExact(socket, move)) {
+                    std::cerr << "Failed to send move" << std::endl;
+                    return;
+                }
+
+                auto response = ReadExact<1>(socket);
+                if (!response) {
+                    std::cerr << "Failed to receive response" << std::endl;
+                    return;
+                }
+
+                char result = (*response)[0];
+                auto [x, y] = *ParseMove(move);
+
+                if (result == '0') {
+                    other_field_.MarkMiss(x, y);
+                } else if (result == '1') {
+                    other_field_.MarkHit(x, y);
+                } else if (result = '2') {
+                    other_field_.MarkKill(x, y);
+                }
+            } else {
+                auto move = ReadExact<2>(socket);
+                if (!move) {
+                    std::cerr << "Failed to receive move" << std::endl;
+                    return;
+                }
+
+                auto parsed_move  = ParseMove(*move);
+                if (!parsed_move) {
+                    std::cerr << "Invalid move received" << std::endl;
+                    return;
+                }
+
+                auto [x, y] = *parsed_move;
+                SeabattleField::ShotResult shot_result = my_field_.Shoot(x, y);
+
+                if (!WriteExact(socket, std::string(1,static_cast<char>(shot_result)))) {
+                    std::cerr << "Failed to send shot result" << std::endl;
+                    return;
+                }
+
+                if (shot_result == SeabattleField::ShotResult::MISS) {
+                    my_initiative = true;
+                }
+            }
+        }
+        PrintFields();
+        std::cout << (my_field_.IsLoser() ? "You lost!" : "You won!") << std::endl;
     }
 
 private:
@@ -96,7 +158,7 @@ private:
         return my_field_.IsLoser() || other_field_.IsLoser();
     }
 
-    // TODO: добавьте методы по вашему желанию
+    
 
 private:
     SeabattleField my_field_;
@@ -105,8 +167,14 @@ private:
 
 void StartServer(const SeabattleField& field, unsigned short port) {
     SeabattleAgent agent(field);
+   
+    net::io_context io_context;
+    tcp::acceptor acceptor(io_context, tcp::endpoint(tcp::v4(), port));
+    std::cout << "Waiting for connection..." << std::endl;
 
-    // TODO: реализуйте самостоятельно
+    boost::system::error_code ec;
+    tcp::socket socket{io_context};
+    acceptor.accept(socket, ec);
 
     agent.StartGame(socket, false);
 };
@@ -114,7 +182,10 @@ void StartServer(const SeabattleField& field, unsigned short port) {
 void StartClient(const SeabattleField& field, const std::string& ip_str, unsigned short port) {
     SeabattleAgent agent(field);
 
-    // TODO: реализуйте самостоятельно
+    net::io_context io_context;
+    tcp::socket socket{io_context};
+    socket.connect(tcp::endpoint(net::ip::make_address(ip_str), port));
+
 
     agent.StartGame(socket, true);
 };
