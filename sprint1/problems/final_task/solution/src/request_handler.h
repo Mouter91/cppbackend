@@ -33,17 +33,67 @@ public:
     RequestHandler(const RequestHandler&) = delete;
     RequestHandler& operator=(const RequestHandler&) = delete;
 
-    template <typename Body, typename Allocator, typename Send>
-    void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send);     
+template <typename Body, typename Allocator, typename Send>
+void operator()(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
+    if (req.method() == http::verb::get) {
+        std::string target(req.target());
+        if (target == "/api/v1/maps") {
+            handlerGetMaps(std::move(req), std::forward<Send>(send));
+        } else if(target.starts_with("/api/v1/maps/")){
+            const auto mapId = model::Map::Id(std::string(target.substr(13)));
+            handlerGetMapsById(std::move(req), std::forward<Send>(send), mapId);
+        } else if (target.starts_with("/api/")) {
+            send(createErrorResponse(http::status::bad_request, "badRequest", "Bad request"));
+        } else {
+            send(createErrorResponse(http::status::not_found,"mapNotFound", "Not Found"));
+        }
+    } else {
+        send(createErrorResponse(http::status::method_not_allowed, "notAllowed", "Method Not Allowed"));
+    }
+}    
 
 private:
     model::Game& game_;
 
-    template <typename Body, typename Allocator, typename Send>
-    void handlerGetMaps(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send); 
+template <typename Body, typename Allocator, typename Send>
+void handlerGetMaps(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
+    json::array mapsJson;
 
-    template <typename Body, typename Allocator, typename Send>
-    void handlerGetMapsById(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send, const model::Map::Id& mapId); 
+    for (const auto& map : game_.GetMaps()) {
+        mapsJson.push_back({
+            {"id", *map.GetId()},
+            {"name", map.GetName()}
+        });
+    }
+    std::string json_str = json::serialize(mapsJson);
+
+    send(std::move(MakeStringResponse(http::status::ok, json_str,
+                                      req.version(), req.keep_alive(), ContentType::APP_JSON)));
+} 
+
+
+template <typename Body, typename Allocator, typename Send>
+void handlerGetMapsById(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send, const model::Map::Id& mapId) {
+    const auto* map = game_.FindMap(mapId);
+    if (!map) {
+        send(createErrorResponse(http::status::not_found, "mapNotFound", "Map not found"));
+        return;
+    }
+
+    json::object mapJson{
+        {"id", *map->GetId()},
+        {"name", map->GetName()}
+    };
+
+    // Сериализация данных карты
+    serializeRoads(map, mapJson);
+    serializeBuildings(map, mapJson);
+    serializeOffices(map, mapJson);
+
+    // Отправка ответа
+    send(MakeStringResponse(http::status::ok, json::serialize(mapJson), req.version(), req.keep_alive(), ContentType::APP_JSON));
+}
+
 
     void serializeRoads(const model::Map* map, json::object& mapJson);
     void serializeBuildings(const model::Map* map, json::object& mapJson);
