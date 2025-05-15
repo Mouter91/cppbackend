@@ -6,9 +6,6 @@ set(CMAKE_CXX_STANDARD 20)
 include(${CMAKE_BINARY_DIR}/conanbuildinfo.cmake)
 conan_basic_setup(TARGETS)
 
-# Включение Catch2 (если используется Conan)
-find_package(Catch2 REQUIRED)
-
 get_property(importTargets DIRECTORY "${CMAKE_SOURCE_DIR}" PROPERTY IMPORTED_TARGETS)
 
 find_package(Boost 1.78.0 REQUIRED)
@@ -61,7 +58,6 @@ target_link_libraries(game_server PRIVATE
 # Исполняемый файл для тестов
 add_executable(game_server_tests
     tests/loot_generator_tests.cpp
-    # Добавьте другие тестовые файлы по мере необходимости
 )
 
 # Настройка тестов
