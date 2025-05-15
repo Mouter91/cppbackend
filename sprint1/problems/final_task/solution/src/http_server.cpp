@@ -1,11 +1,12 @@
 #include "http_server.h"
+#include "log.h"
 #include <boost/asio/dispatch.hpp>
 
 namespace http_server {
 
-    void ReportError(beast::error_code ec, std::string_view what) {
-    std::cerr << what << ": " << ec.message() << std::endl;
-    }
+    void ReportError(beast::error_code ec, std::string_view where) {
+        ServerErrorLog(ec.value(), ec.what(), where);
+	}
 
     void SessionBase::Run() {
     // Вызываем метод Read, используя executor объекта stream_.
@@ -56,46 +57,6 @@ namespace http_server {
         Read();
     }
 
-    template <typename RequestHandler>
-    void Listener<RequestHandler>::Run() {
-        DoAccept();
-    }
 
-    template <typename RequestHandler>
-    void Listener<RequestHandler>::DoAccept() {
-            acceptor_.async_accept(
-                // Передаём последовательный исполнитель, в котором будут вызываться обработчики
-                // асинхронных операций сокета
-                net::make_strand(ioc_),
-                // С помощью bind_front_handler создаём обработчик, привязанный к методу OnAccept
-                // текущего объекта.
-                // Так как Listener — шаблонный класс, нужно подсказать компилятору, что
-                // shared_from_this — метод класса, а не свободная функция.
-                // Для этого вызываем его, используя this
-                // Этот вызов bind_front_handler аналогичен
-                // namespace ph = std::placeholders;
-                // std::bind(&Listener::OnAccept, this->shared_from_this(), ph::_1, ph::_2)
-                beast::bind_front_handler(&Listener::OnAccept, this->shared_from_this()));
-        }
-
-    template <typename RequestHandler>
-    void Listener<RequestHandler>::OnAccept(sys::error_code ec, tcp::socket socket) {
-        using namespace std::literals;
-
-        if (ec) {
-            return ReportError(ec, "accept"sv);
-        }
-
-        // Асинхронно обрабатываем сессию
-        AsyncRunSession(std::move(socket));
-
-        // Принимаем новое соединение
-        DoAccept();
-    }
-
-    template <typename RequestHandler>
-    void Listener<RequestHandler>::AsyncRunSession(tcp::socket&& socket) {
-        std::make_shared<Session<RequestHandler>>(std::move(socket), request_handler_)->Run();
-    }
 
 }  // namespace http_server
