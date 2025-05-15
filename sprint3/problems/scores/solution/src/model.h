@@ -6,7 +6,6 @@
 #include <cstdint>
 #include <memory>
 #include <random>
-#include <unordered_map>
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -389,7 +388,7 @@ class GameSession {
 
   GameSession(const Map& map);
   Map::Id GetMapId() const;
-  Id GetSessionId();
+  const Id GetSessionId() const;
 
   void AddDog(std::shared_ptr<Dog> dog);
   const Dogs& GetDogs() const;

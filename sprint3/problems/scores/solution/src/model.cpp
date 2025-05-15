@@ -155,7 +155,7 @@ bool GameSession::HasDog(Dog::Id id) {
   return dogs_.count(id) > 0;
 }
 
-GameSession::Id GameSession::GetSessionId() {
+const GameSession::Id GameSession::GetSessionId() const {
   return id_;
 }
 
@@ -245,7 +245,6 @@ void GameSession::Tick(double delta_time) {
 }
 
 void GameSession::InitializeRegions() {
-  int id = 0;
   for (const auto& road : map_.GetRoads()) {
     if (road.IsHorizontal()) {
       double left_x = road.GetStart().x;

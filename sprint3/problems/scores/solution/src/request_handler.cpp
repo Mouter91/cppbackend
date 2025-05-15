@@ -148,11 +148,10 @@ StringResponse ApiHandler::HandleJoinGame(const StringRequest& req) {
 
     return MakeJsonResponse(http::status::ok, response, req.version(), req.keep_alive());
 
-  } catch (const json::system_error&) {
+  } catch (const boost::system::system_error&) {
     return MakeBadRequestError("Join game request parse error");
-  } catch (...) {
-    return MakeErrorResponse(http::status::internal_server_error, "internalError",
-                             "Internal server error");
+  } catch (const std::exception& ex) {
+    return MakeErrorResponse(http::status::internal_server_error, "internalError", ex.what());
   }
 }
 
@@ -257,11 +256,10 @@ StringResponse ApiHandler::HandlePlayerAction(const StringRequest& req) {
       return MakeJsonResponse(http::status::ok, json::object{}, req.version(), req.keep_alive());
     });
 
-  } catch (const json::system_error&) {
+  } catch (const boost::system::system_error&) {
     return MakeBadRequestError("Failed to parse action");
-  } catch (...) {
-    return MakeErrorResponse(http::status::internal_server_error, "internalError",
-                             "Internal server error");
+  } catch (const std::exception& ex) {
+    return MakeErrorResponse(http::status::internal_server_error, "internalError", ex.what());
   }
 }
 
@@ -303,12 +301,11 @@ StringResponse ApiHandler::HandleGameTick(const StringRequest& req) {
 
     return MakeJsonResponse(http::status::ok, json::object{}, req.version(), req.keep_alive());
 
-  } catch (const json::system_error&) {
+  } catch (const boost::system::system_error&) {
     return MakeErrorResponse(http::status::bad_request, "invalidArgument",
                              "Failed to parse tick request JSON");
-  } catch (...) {
-    return MakeErrorResponse(http::status::internal_server_error, "internalError",
-                             "Internal server error");
+  } catch (const std::exception& ex) {
+    return MakeErrorResponse(http::status::internal_server_error, "internalError", ex.what());
   }
 }
 

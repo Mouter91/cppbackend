@@ -123,7 +123,6 @@ GamePackage LoadGamePackage(const std::filesystem::path& json_path) {
 
   GamePackage result;
   model::Game& game = result.game;
-  extra_data::MapsExtra& extra = result.extra_data;
 
   // Устанавливаем глобальную скорость по умолчанию (1.0 если не задано)
   if (json_obj.contains(DEFAULT_DOG_SPEED)) {
@@ -150,6 +149,8 @@ GamePackage LoadGamePackage(const std::filesystem::path& json_path) {
       if (!map.IsDefaultDogSpeedValueConfigured()) {
         map.SetDefaultDogSpeed(game.GetDefaultDogSpeed());
       }
+
+      extra_data::MapsExtra& extra = result.extra_data;
 
       if (map_obj.contains(LOOT_TYPES)) {
         auto loot_types = map_obj.at(LOOT_TYPES);
