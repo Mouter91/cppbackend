@@ -265,7 +265,22 @@ public:
     void StopPlayer(Dog::Id id);
     void Tick(double delta_time);
 
-    void InitializeRegions();    
+void InitializeRegions() {
+    int id = 0;
+    for (const auto& road : map_.GetRoads()) {
+        if (road.IsHorizontal()) {
+            double left_x = road.GetStart().x;
+            double right_x = road.GetEnd().x;
+            if (left_x > right_x) { std::swap(left_x, right_x); }
+            regions_.emplace(regions_.size(), Region{left_x - 0.4, right_x + 0.4, road.GetStart().y - 0.4, road.GetStart().y + 0.4});
+        } else if (road.IsVertical()) {
+            double lower_y = road.GetStart().y;
+            double upper_y = road.GetEnd().y;
+            if (lower_y > upper_y) { std::swap(lower_y, upper_y); }
+            regions_.emplace(regions_.size(), Region{road.GetStart().x - 0.4, road.GetStart().x + 0.4, lower_y - 0.4, upper_y + 0.4});
+        }
+    }
+}    
 
 private:
     static Id GenerateId() {
@@ -274,12 +289,89 @@ private:
         return boost::hash<boost::uuids::uuid>()(uuid);
     }
 
-    MoveInfo::Position CalculateNewPosition(const MoveInfo::Position& position, const MoveInfo::Speed& speed, double delta_time);
-   bool IsWithinAnyRegion(const MoveInfo::Position& pos, const std::unordered_map<int, Region>& regions);
-   MoveInfo::Position FindStartingPosition() const;
-   MoveInfo::Position AdjustPositionToMaxRegion(const std::shared_ptr<Dog>& dog);
-   MoveInfo::Position MaxValueOfRegion(Region reg, MoveInfo::Direction dir, MoveInfo::Position current_pos);
-   MoveInfo::Position  MoveOnMaxDistance(const MoveInfo::Position& current, const MoveInfo::Position& possible, double current_max);    
+    MoveInfo::Position CalculateNewPosition(const MoveInfo::Position& position, const MoveInfo::Speed& speed, double delta_time) {
+        MoveInfo::Position result{};
+
+            result.x = position.x + speed.x * delta_time;
+            result.y = position.y + speed.y * delta_time;
+
+            return result;
+    }
+
+    bool IsWithinAnyRegion(const MoveInfo::Position& pos, const std::unordered_map<int, Region>& regions) {
+        for (const auto& [id, region] : regions) {
+            if (region.Contains(pos)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+MoveInfo::Position FindStartingPosition() const {
+    const auto& roads = map_.GetRoads();
+    if (roads.empty()) {
+        return {0.0, 0.0};
+    }
+
+    const auto& first_road = roads.front();
+    const auto start = first_road.GetStart();
+
+    // Немного отступим от центра клетки, чтобы пес оказался "на дороге"
+    return MoveInfo::Position{
+        static_cast<double>(start.x),
+        static_cast<double>(start.y)
+    };
+}
+MoveInfo::Position AdjustPositionToMaxRegion(const std::shared_ptr<Dog>& dog) {
+       MoveInfo::Position  max_pos = dog->GetPosition();
+        double max_diff = 0;
+
+        for (const auto& [region_id, region] : regions_) {
+            if (region.Contains(dog->GetPosition())) {
+               MoveInfo::Position  possible_max_pos = MaxValueOfRegion(region, dog->GetDirection(), dog->GetPosition());
+                MoveInfo::Position max_distance_pos = MoveOnMaxDistance(dog->GetPosition(), possible_max_pos, max_diff);
+
+                double dx = max_distance_pos.x - dog->GetPosition().x;
+                double dy = max_distance_pos.y - dog->GetPosition().y;
+                double distance = std::sqrt(dx * dx + dy * dy);
+
+                if (distance > max_diff) {
+                    max_diff = distance;
+                    max_pos = max_distance_pos;
+                }
+            }
+        }
+
+        return max_pos;
+    }
+
+   MoveInfo::Position MaxValueOfRegion(Region reg, MoveInfo::Direction dir, MoveInfo::Position current_pos) {
+       MoveInfo::Position result = current_pos;
+        if (dir == MoveInfo::Direction::EAST) {
+            result.x = reg.max_x;
+        } else if (dir == MoveInfo::Direction::WEST) {
+            result.x = reg.min_x;
+        } else if (dir == MoveInfo::Direction::SOUTH) {
+            result.y = reg.max_y;
+        } else if (dir == MoveInfo::Direction::NORTH) {
+            result.y = reg.min_y;
+        }
+
+        return result;
+    }
+
+     MoveInfo::Position  MoveOnMaxDistance(const MoveInfo::Position& current, const MoveInfo::Position& possible, double current_max) {
+        double dx = current.x - possible.x;
+        double dy = current.y - possible.y;
+        double dist = std::sqrt(dx * dx + dy * dy);
+
+        if (dist > current_max) {
+            return possible;
+        } 
+
+        return current;
+    }
+    
     Dogs dogs_;
     const Map& map_;
     Id id_;
