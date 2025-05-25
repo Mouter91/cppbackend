@@ -47,15 +47,23 @@ int main(int argc, const char* argv[]) {
 
     app.SetGameSettings(config, strand);
 
-    if (!config->state_file.empty()) {
-      try {
-        app.LoadState(config->state_file);
-      } catch (const std::exception& e) {
-        ServerStopLog(EXIT_FAILURE, e.what());
-        return EXIT_FAILURE;
-      }
+    // Храним слушателей и соединения, чтобы не уничтожались
+    std::vector<std::unique_ptr<app::ApplicationListener>> persistent_listeners;
+    std::vector<sig::scoped_connection> persistent_connections;
+
+    if (!config->state_file.empty() && config->save_state_period > 0) {
+      auto serializer = std::make_unique<app::SerializingListener>(
+          app.GetGame(), app.GetPlayers(), config->state_file,
+          std::chrono::milliseconds(config->save_state_period));
+
+      // Сохраняем connection в persistent_connections
+      persistent_connections.push_back(
+          app.DoOnTick([ptr = serializer.get()](app::milliseconds delta) { ptr->OnTick(delta); }));
+
+      persistent_listeners.push_back(std::move(serializer));
     }
 
+    // Обработка сигналов завершения (Ctrl+C / SIGTERM)
     net::signal_set signals(ioc, SIGINT, SIGTERM);
     signals.async_wait([&ioc, &app, &config](const sys::error_code& ec, int) {
       if (!ec) {
@@ -82,9 +90,9 @@ int main(int argc, const char* argv[]) {
 
     ServerStartLog(port, address);
 
-    RunWorkers(std::max(1u, num_threads), [&ioc] { ioc.run(); });
+    RunWorkers(num_threads, [&ioc] { ioc.run(); });
 
-    // Сохраняем состояние при нормальном завершении работы
+    // Финальное сохранение состояния
     if (!config->state_file.empty()) {
       try {
         app.SaveState(config->state_file);
@@ -92,9 +100,11 @@ int main(int argc, const char* argv[]) {
         std::cerr << "Failed to save state: " << e.what() << std::endl;
       }
     }
+
   } catch (const std::exception& ex) {
     ServerStopLog(EXIT_FAILURE, ex.what());
     return EXIT_FAILURE;
   }
+
   return EXIT_SUCCESS;
 }

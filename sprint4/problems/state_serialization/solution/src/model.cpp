@@ -166,6 +166,11 @@ GameSession::GameSession(const Map& map) : map_(map), id_(GenerateId()) {
   InitializeRegions();
 }
 
+GameSession::GameSession(Dogs dogs, const Map& map, Id id, std::vector<Loot> loots)
+    : dogs_(std::move(dogs)), map_(map), id_(std::move(id)), loots_(std::move(loots)) {
+  InitializeRegions();
+}
+
 Map::Id GameSession::GetMapId() const {
   return map_.GetId();
 }
@@ -231,7 +236,7 @@ void GameSession::StopPlayer(Dog::Id id) {
 }
 
 void GameSession::ProcessCollisions(double delta_time) {
-  GameItemGathererProvider provider(*this);
+  GameItemGathererProvider provider(*this, delta_time);
   auto events = collision_detector::FindGatherEvents(provider);
 
   std::sort(events.begin(), events.end(),
@@ -550,20 +555,8 @@ Token PlayerTokens::AddPlayer(std::shared_ptr<Player> player) {
   return token;
 }
 
-void Players::AddPlayerWithToken(std::shared_ptr<Player> player, Token token) {
-  Dog::Id dog_id = player->GetDogId();
-  std::string map_id = *player->GetGameSession()->GetMap().GetId();
-
-  // Добавляем в карту игроков
-  players_[{dog_id, map_id}] = player;
-
-  // Добавляем в систему токенов
-  player_tokens_.AddToken(player, token);
-}
-
 void PlayerTokens::AddToken(std::shared_ptr<Player> player, Token token) {
   token_to_player_[token] = player;
-  player_to_token_[player] = token;
 }
 
 std::shared_ptr<Player> PlayerTokens::FindPlayerByToken(const Token& token) {
@@ -572,14 +565,6 @@ std::shared_ptr<Player> PlayerTokens::FindPlayerByToken(const Token& token) {
     return player->second;
 
   return nullptr;
-}
-
-Token PlayerTokens::FindTokenByPlayer(std::shared_ptr<Player> player) {
-  auto token = player_to_token_.find(player);
-  if (token != player_to_token_.end())
-    return token->second;
-
-  return Token{""};
 }
 
 Token PlayerTokens::GenerateToken() {

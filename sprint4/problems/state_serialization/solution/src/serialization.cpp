@@ -1,4 +1,6 @@
 #include "serialization.h"
+#include <memory>
+#include "model.h"
 
 namespace model {
 
@@ -26,9 +28,10 @@ Dog DeserializeDog(const SerDog& ser_dog) {
 }
 
 SerGameSession SerializeGameSession(const GameSession& session) {
-  SerGameSession ser_session(*session.GetMapId());  // Используем конструктор
+  SerGameSession ser_session;
+
+  ser_session.map_id = *session.GetMapId();
   ser_session.id = session.GetSessionId();
-  ser_session.random_spawn_mode = session.IsRandomSpawnEnabled();
 
   for (const auto& [dog_id, dog] : session.GetDogs()) {
     ser_session.dogs[dog_id] = SerializeDog(*dog);
@@ -41,72 +44,72 @@ SerGameSession SerializeGameSession(const GameSession& session) {
   return ser_session;
 }
 
-void DeserializeGameSessionInto(GameSession& session, const SerGameSession& ser_session) {
-  session.SetRandomSpawnMode(ser_session.random_spawn_mode);
+std::shared_ptr<GameSession> DeserializeGameSessionInto(const SerGameSession& ser_session,
+                                                        Game& game) {
+  // 1. Найти карту
+  const Map* map = game.FindMap(Map::Id{ser_session.map_id});
+  if (!map) {
+    throw std::runtime_error("Map not found: " + ser_session.map_id);
+  }
 
+  // 2. Восстановить Dogs из SerDog
+  model::GameSession::Dogs dogs;
   for (const auto& [dog_id, ser_dog] : ser_session.dogs) {
     auto dog = std::make_shared<Dog>(DeserializeDog(ser_dog));
-    session.AddDog(dog);
+    dogs[dog_id] = dog;
   }
 
+  // 3. Восстановить Loots
+  std::vector<GameSession::Loot> loots;
   for (const auto& ser_loot : ser_session.loots) {
-    session.AddLoot({ser_loot.type, ser_loot.value, ser_loot.position});
+    loots.push_back({ser_loot.type, ser_loot.value, ser_loot.position});
   }
+
+  // 4. Создать GameSession
+  auto session =
+      std::make_shared<GameSession>(std::move(dogs), *map, ser_session.id, std::move(loots));
+
+  session->SetRandomSpawnMode(game.GetSettings().random_spawn);
+
+  return session;
 }
 
-SerPlayer SerializePlayer(std::shared_ptr<Player> player, model::Players& players) {
-  SerPlayer ser;
-  ser.dog_id = player->GetDogId();
-  ser.map_id = *player->GetGameSession()->GetMapId();
-  ser.session_id = player->GetGameSession()->GetSessionId();
-  ser.token = *players.GetPlayerTokens().FindTokenByPlayer(player);
+SerPlayers SerializePlayers(Players& players) {
+  SerPlayers ser;
+
+  for (const auto& [token, player_ptr] : players.GetPlayerTokens().GetTokenToPlayer()) {
+    SerPlayer ser_player;
+    ser_player.dog_id = player_ptr->GetDogId();
+    ser_player.gamesession_id = player_ptr->GetGameSession()->GetSessionId();
+    ser_player.map_id = *player_ptr->GetGameSession()->GetMap().GetId();
+
+    ser.players_with_tokens.push_back(SerPlayerWithToken{std::string(*token), ser_player});
+  }
+
   return ser;
 }
 
-SerPlayers SerializePlayers(model::Players& players) {
-  SerPlayers result;
-  auto& player_tokens = players.GetPlayerTokens().GetTokenToPlayer();
-  for (const auto& [token, player] : player_tokens) {
-    SerPlayer ser_player;
-    ser_player.dog_id = player->GetDogId();
-    ser_player.map_id = *player->GetGameSession()->GetMapId();
-    ser_player.session_id = player->GetGameSession()->GetSessionId();
-    ser_player.token = *token;
-    result.players.push_back(ser_player);
-  }
-  return result;
-}
+void DeserializePlayers(const SerPlayers& ser_players, Game& game, Players& players) {
+  players.ClearAll();
 
-std::shared_ptr<model::Player> DeserializePlayer(const SerPlayer& ser, model::Game& game) {
-  auto session = game.FindGameSession(model::Map::Id(ser.map_id));
-  if (!session) {
-    throw std::runtime_error("GameSession not found for map_id: ");
-  }
+  for (const auto& ser_player_with_token : ser_players.players_with_tokens) {
+    const auto& ser_player = ser_player_with_token.player;
+    const auto& token_str = ser_player_with_token.token;
 
-  const auto& dogs = session->GetDogs();  // Ссылка, чтобы не копировать контейнер
-  auto it = dogs.find(ser.dog_id);
-  if (it != dogs.end()) {
-    auto dog = it->second;
-    return std::make_shared<model::Player>(dog, session);
-  }
-
-  throw std::runtime_error("Dog not found for dog_id: " + std::to_string(ser.dog_id));
-}
-
-void DeserializePlayers(const SerPlayers& ser_players, model::Game& game, model::Players& result) {
-  for (const auto& ser_player : ser_players.players) {
-    auto session = game.FindGameSession(model::Map::Id(ser_player.map_id));
-    if (!session)
+    // Находим игровую сессию
+    auto game_session = game.FindGameSession(Map::Id{ser_player.map_id});
+    if (!game_session) {
       continue;
+    }
 
-    const auto& dogs = session->GetDogs();
-    auto it = dogs.find(ser_player.dog_id);
-    if (it == dogs.end())
-      continue;
+    // Находим собаку
+    auto dog = game_session->FindDog(ser_player.dog_id);
 
-    auto dog = it->second;
-    auto player = std::make_shared<model::Player>(dog, session);
-    result.AddPlayerWithToken(player, model::Token(ser_player.token));
+    // Восстанавливаем игрока с токеном
+    auto player = std::make_shared<Player>(dog, game_session);
+    players.GetPlayerTokens().AddToken(player, Token{token_str});  // Создаем Token из строки
+    players.GetAllPlayers().emplace(std::make_pair(Dog::Id{ser_player.dog_id}, ser_player.map_id),
+                                    player);
   }
 }
 

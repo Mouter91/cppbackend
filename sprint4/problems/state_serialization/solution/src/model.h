@@ -339,6 +339,9 @@ class GameSession {
     MoveInfo::Position position;
   };
 
+  GameSession(const Map& map);
+  GameSession(Dogs dogs, const Map& map, Id id, std::vector<Loot> loots);
+
   const std::vector<Loot>& GetLoots() const {
     return loots_;
   }
@@ -377,7 +380,6 @@ class GameSession {
     }
   }
 
-  GameSession(const Map& map);
   Map::Id GetMapId() const;
   const Id GetSessionId() const;
 
@@ -412,6 +414,14 @@ class GameSession {
 
   void AddLoot(const Loot& loot) {
     loots_.push_back(loot);
+  }
+
+  std::shared_ptr<Dog> FindDog(Dog::Id dog_id) {
+    auto ptr = dogs_.find(dog_id);
+    if (ptr == dogs_.end()) {
+      return nullptr;  // Элемент не найден
+    }
+    return ptr->second;  // Возвращаем shared_ptr<Dog>
   }
 
  private:
@@ -468,7 +478,6 @@ class PlayerTokens {
   Token AddPlayer(std::shared_ptr<Player> player);
 
   std::shared_ptr<Player> FindPlayerByToken(const Token& token);
-  Token FindTokenByPlayer(std::shared_ptr<Player> player);
 
   void AddToken(std::shared_ptr<Player> player, Token token);
 
@@ -476,9 +485,12 @@ class PlayerTokens {
     return token_to_player_;
   }
 
+  void Clear() {
+    token_to_player_.clear();  // Очищаем словарь токенов
+  }
+
  private:
   std::unordered_map<Token, std::shared_ptr<Player>, TokenHasher> token_to_player_;
-  std::unordered_map<std::shared_ptr<Player>, Token> player_to_token_;
 
   std::random_device random_device_;
   std::mt19937_64 generator1_{[this] {
@@ -512,11 +524,14 @@ class Players {
     return player_tokens_;
   }
 
+  void ClearAll() {
+    player_tokens_.Clear();  // Очищаем токены
+    players_.clear();        // Очищаем всех игроков
+  }
+
   AllPlayers& GetAllPlayers() {
     return players_;
   }
-
-  void AddPlayerWithToken(std::shared_ptr<Player> player, Token token);
 
  private:
   PlayerTokens player_tokens_;
@@ -576,6 +591,15 @@ class Game {
     return game_sessions_id_to_index_;
   }
 
+  void LoadGameSession(std::shared_ptr<GameSession>&& session) {
+    GameSession::Id session_id = session->GetSessionId();
+    auto map_id = session->GetMap().GetId();
+
+    game_sessions_id_to_index_[session_id] = sessions_.size();
+    map_id_to_session_id_[map_id] = session_id;
+    sessions_.push_back(std::move(session));  // Один раз!
+  }
+
  private:
   std::shared_ptr<GameSession> FindGameSessionBySessionId(GameSession::Id session_id);
 
@@ -593,6 +617,9 @@ class Game {
 class GameItemGathererProvider : public collision_detector::ItemGathererProvider {
  public:
   GameItemGathererProvider(const GameSession& session) : session_(session) {
+  }
+  GameItemGathererProvider(const GameSession& session, double delta_time)
+      : session_(session), delta_time_(delta_time) {
   }
 
   size_t ItemsCount() const override {

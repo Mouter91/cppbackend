@@ -5,6 +5,7 @@
 #include <fstream>
 #include <memory>
 #include <vector>
+#include <boost/signals2.hpp>
 
 #include "model.h"
 #include "extra_data.h"
@@ -13,19 +14,41 @@
 #include "ticker.h"
 
 namespace net = boost::asio;
+namespace sig = boost::signals2;
 
 using Strand = net::strand<net::io_context::executor_type>;
 
 namespace app {
 
+using milliseconds = std::chrono::milliseconds;
+
 class ApplicationListener {
  public:
-  virtual void OnTick(std::chrono::milliseconds delta) = 0;
   virtual ~ApplicationListener() = default;
+  virtual void OnTick(milliseconds delta) = 0;
+};
+
+class SerializingListener : public ApplicationListener {
+ public:
+  SerializingListener(model::Game& game, model::Players& players, const std::string& file_path,
+                      milliseconds period);
+
+  void OnTick(milliseconds delta) override;
+
+ private:
+  void SaveState();
+
+  model::Game& game_;
+  model::Players& players_;
+  std::string file_path_;
+  milliseconds period_;
+  milliseconds elapsed_{0ms};
 };
 
 class Application {
  public:
+  using TickSignal = sig::signal<void(milliseconds)>;
+
   explicit Application(model::Game&& game, extra_data::MapsExtra&& extra,
                        const Args* args = nullptr);
 
@@ -39,47 +62,27 @@ class Application {
     return players_;
   }
 
-  void SetGameSettings(const std::optional<Args>& config, Strand& strand) {
-    if (!config)
-      return;  // Обязательно проверяем на наличие значения
+  void SetGameSettings(const std::optional<Args>& config, Strand& strand);
 
-    game_.GetSettings().random_spawn = config->randomize_spawn_points;
-
-    if (config->tick_period > 0) {
-      game_.GetSettings().ticker = std::make_shared<game_time::Ticker>(
-          strand, std::chrono::milliseconds(config->tick_period),
-          [this](std::chrono::milliseconds delta) {
-            game_.Tick(static_cast<double>(delta.count()) / 1000.0);
-          });
-      game_.GetSettings().ticker->Start();
-    }
-  }
-
-  void AddListener(std::shared_ptr<ApplicationListener> listener);
-  void Tick(std::chrono::milliseconds delta);
+  void Tick(milliseconds delta);
 
   void SaveState(const std::string& file_path);
   void LoadState(const std::string& file_path);
+
+  [[nodiscard]] sig::connection DoOnTick(const TickSignal::slot_type& handler) {
+    return tick_signal_.connect(handler);
+  }
+
+  void AddListener(std::unique_ptr<ApplicationListener> listener) {
+    listeners_.push_back(std::move(listener));
+  }
 
  private:
   model::Game game_;
   extra_data::MapsExtra maps_extra_;
   model::Players players_;
-  std::vector<std::shared_ptr<ApplicationListener>> listeners_;
-};
-
-class SerializingListener : public ApplicationListener {
- public:
-  SerializingListener(Application& app, std::string file_path,
-                      std::chrono::milliseconds save_period);
-
-  void OnTick(std::chrono::milliseconds delta) override;
-
- private:
-  Application& app_;
-  std::string file_path_;
-  std::chrono::milliseconds save_period_;
-  std::chrono::milliseconds time_since_last_save_;
+  TickSignal tick_signal_;
+  std::vector<std::unique_ptr<ApplicationListener>> listeners_;
 };
 
 }  // namespace app
