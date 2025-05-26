@@ -1,110 +1,57 @@
 #include "application.h"
-#include <filesystem>
-#include <fstream>
-#include <iostream>
 
 namespace app {
 
-using namespace std::chrono_literals;
-
-SerializingListener::SerializingListener(model::Game& game, model::Players& players,
-                                         const std::string& file_path, milliseconds period)
-    : game_(game), players_(players), file_path_(file_path), period_(period) {
-}
-
-void SerializingListener::OnTick(milliseconds delta) {
-  elapsed_ += delta;
-  if (elapsed_ >= period_) {
-    elapsed_ = 0ms;
-    try {
-      SaveState();
-    } catch (const std::exception& e) {
-      std::cerr << "Failed to save state in listener: " << e.what() << std::endl;
-    }
-  }
-}
-
-void SerializingListener::SaveState() {
-  std::string tmp_path = file_path_ + ".tmp";
-  std::ofstream ofs(tmp_path);
-  if (!ofs.is_open()) {
-    throw std::ios_base::failure("Failed to open temporary file for saving");
-  }
-
-  model::SaveGame(game_, players_, ofs);
-
-  std::filesystem::rename(tmp_path, file_path_);
-  if (!std::filesystem::exists(file_path_)) {
-    throw std::runtime_error("Failed to verify saved state file");
-  }
-}
-
-Application::Application(model::Game&& game, extra_data::MapsExtra&& extra, const Args* args)
+Application::Application(model::Game&& game, extra_data::MapsExtra&& extra)
     : game_(std::move(game)), maps_extra_(std::move(extra)) {
-  if (args && !args->state_file.empty()) {
-    LoadState(args->state_file);
-  }
 }
 
-void Application::SaveState(const std::string& file_path) {
-  try {
-    std::string tmp_path = file_path + ".tmp";
-    std::ofstream ofs(tmp_path);
-
-    if (!ofs.is_open()) {
-      throw std::ios_base::failure("Failed to open temporary file for saving");
-    }
-
-    model::SaveGame(game_, players_, ofs);
-
-    // Атомарная замена
-    std::filesystem::rename(tmp_path, file_path);
-  } catch (const std::exception& e) {
-    std::cerr << "Failed to save state: " << e.what() << std::endl;
-    throw;
-  }
+model::Game& Application::GetGame() {
+  return game_;
+}
+extra_data::MapsExtra& Application::GetExtraData() {
+  return maps_extra_;
+}
+model::Players& Application::GetPlayers() {
+  return players_;
 }
 
-void Application::LoadState(const std::string& file_path) {
-  try {
-    if (!std::filesystem::exists(file_path)) {
-      return;
-    }
-
-    std::ifstream in(file_path, std::ios::binary);
-    if (!in) {
-      throw std::runtime_error("Failed to open file for reading");
-    }
-
-    model::LoadGame(game_, players_, in);
-  } catch (const std::exception& e) {
-    std::cerr << "Failed to load state: " << e.what() << std::endl;
-    throw;
-  }
-}
-
-void Application::SetGameSettings(const std::optional<Args>& config, Strand& strand) {
+void Application::SetGameSettings(const std::optional<Args>& config) {
   if (!config)
     return;
 
   game_.GetSettings().random_spawn = config->randomize_spawn_points;
+}
+
+void Application::SetGameTicker(const std::optional<Args>& config, Strand& strand) {
+  if (!config)
+    return;
 
   if (config->tick_period > 0) {
-    game_.GetSettings().ticker = std::make_shared<game_time::Ticker>(
-        strand, std::chrono::milliseconds(config->tick_period), [this](milliseconds delta) {
-          this->Tick(delta);  // ✅ вызывает тик приложения и сигнал
-        });
+    game_.GetSettings().ticker =
+        std::make_shared<game_time::Ticker>(strand, std::chrono::milliseconds(config->tick_period),
+                                            [this](std::chrono::milliseconds delta) {
+                                              this->Tick(delta);  // вызываем тик
+                                            });
     game_.GetSettings().ticker->Start();
   }
 }
 
+void Application::Tick(double seconds) {
+  using milliseconds = std::chrono::milliseconds;
+  game_.Tick(seconds);
+  tick_signal_(milliseconds(static_cast<int64_t>(seconds * 1000)));
+}
+
+// Сигнальный тик. Вызывается из тикера
 void Application::Tick(milliseconds delta) {
   game_.Tick(static_cast<double>(delta.count()) / 1000.0);
-  tick_signal_(delta);
-
-  // Уведомляем всех слушателей
-  for (auto& listener : listeners_) {
-    listener->OnTick(delta);
-  }
+  tick_signal_(delta);  // Уведомляем слушателей
 }
+
+void Application::EnableStateSerialization(const std::filesystem::path& file_path,
+                                           milliseconds period) {
+  serializer_ = std::make_unique<SerializingListener>(*this, file_path, period);
+}
+
 }  // namespace app

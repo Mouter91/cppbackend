@@ -19,8 +19,9 @@ SerDog SerializeDog(const Dog& dog) {
 }
 
 Dog DeserializeDog(const SerDog& ser_dog) {
-  Dog dog(ser_dog.name, ser_dog.state, ser_dog.bag_capacity);
+  Dog dog(ser_dog.name, ser_dog.id, ser_dog.state, ser_dog.bag_capacity);
   dog.SetDefaultDogSpeed(ser_dog.default_dog_speed);
+  dog.AddScore(ser_dog.score);
   for (size_t loot_type : ser_dog.bag_items) {
     dog.GetBag().AddLoot(loot_type);
   }
@@ -90,8 +91,6 @@ SerPlayers SerializePlayers(Players& players) {
 }
 
 void DeserializePlayers(const SerPlayers& ser_players, Game& game, Players& players) {
-  players.ClearAll();
-
   for (const auto& ser_player_with_token : ser_players.players_with_tokens) {
     const auto& ser_player = ser_player_with_token.player;
     const auto& token_str = ser_player_with_token.token;
@@ -104,12 +103,14 @@ void DeserializePlayers(const SerPlayers& ser_players, Game& game, Players& play
 
     // Находим собаку
     auto dog = game_session->FindDog(ser_player.dog_id);
+    if (!dog) {
+      continue;
+    }
 
     // Восстанавливаем игрока с токеном
     auto player = std::make_shared<Player>(dog, game_session);
     players.GetPlayerTokens().AddToken(player, Token{token_str});  // Создаем Token из строки
-    players.GetAllPlayers().emplace(std::make_pair(Dog::Id{ser_player.dog_id}, ser_player.map_id),
-                                    player);
+    players.GetAllPlayers().emplace(std::make_pair(dog->GetId(), ser_player.map_id), player);
   }
 }
 

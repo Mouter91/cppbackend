@@ -80,6 +80,10 @@ Dog::Dog(std::string_view name, MoveInfo state, size_t bag_capacity)
       bag_(bag_capacity) {
 }
 
+Dog::Dog(std::string_view name, size_t dog_id, MoveInfo state, size_t bag_capacity)
+    : name_(name), id_(dog_id), state_(std::move(state)), bag_(bag_capacity) {
+}
+
 const std::string& Dog::GetName() const {
   return name_;
 }

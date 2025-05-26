@@ -289,6 +289,7 @@ class Dog {
 
   explicit Dog(std::string_view name, size_t bag_capacity = 3);
   explicit Dog(std::string_view name, MoveInfo state, size_t bag_capacity = 3);
+  explicit Dog(std::string_view name, size_t dog_id, MoveInfo state, size_t bag_capacity = 3);
 
   const Id GetId() const {
     return id_;

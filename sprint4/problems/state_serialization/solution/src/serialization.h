@@ -107,8 +107,7 @@ inline void SaveGame(model::Game& game, model::Players& players, std::ostream& o
     serialized_sessions.push_back(SerializeGameSession(*session));
   }
   SerPlayers ser_players = SerializePlayers(players);
-  oa << serialized_sessions;
-  oa << ser_players;
+  oa << serialized_sessions << ser_players;
 }
 
 inline void LoadGame(model::Game& game, model::Players& players, std::istream& in) {
@@ -116,8 +115,7 @@ inline void LoadGame(model::Game& game, model::Players& players, std::istream& i
   std::vector<SerGameSession> serialized_sessions;
   SerPlayers ser_players;
 
-  ia >> serialized_sessions;
-  ia >> ser_players;
+  ia >> serialized_sessions >> ser_players;
 
   for (const auto& ser_session : serialized_sessions) {
     game.LoadGameSession(DeserializeGameSessionInto(ser_session, game));
