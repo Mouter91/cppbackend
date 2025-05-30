@@ -309,6 +309,59 @@ StringResponse ApiHandler::HandleGameTick(const StringRequest& req) {
   }
 }
 
+StringResponse ApiHandler::HandleGetRecords(const StringRequest& req) {
+  try {
+    // Парсим параметры запроса
+    auto params = req.target().find('?');
+    int start = 0;
+    int max_items = 100;
+
+    if (params != std::string::npos) {
+      std::string_view query = req.target().substr(params + 1);
+      std::vector<std::string_view> pairs;
+      boost::algorithm::split(pairs, query, [](char c) { return c == '&'; });
+
+      for (const auto& pair : pairs) {
+        auto eq_pos = pair.find('=');
+        if (eq_pos == std::string_view::npos)
+          continue;
+
+        std::string_view key = pair.substr(0, eq_pos);
+        std::string_view value = pair.substr(eq_pos + 1);
+
+        if (key == "start") {
+          start = std::stoi(std::string(value));
+        } else if (key == "maxItems") {
+          max_items = std::stoi(std::string(value));
+          if (max_items > 100) {
+            return MakeErrorResponse(http::status::bad_request, "invalidArgument",
+                                     "maxItems cannot exceed 100");
+          }
+        }
+      }
+    }
+
+    // Получаем данные из базы
+    auto result = app_.GetDatabase().GetRetiredPlayers(start, max_items);
+
+    // Формируем ответ
+    json::array records_json;
+    for (const auto& row : result) {
+      records_json.push_back(json::object{{"name", row["name"].as<std::string>()},
+                                          {"score", row["score"].as<int>()},
+                                          {"playTime", row["play_time"].as<double>()}});
+    }
+
+    auto response =
+        MakeJsonResponse(http::status::ok, records_json, req.version(), req.keep_alive());
+    response.set(http::field::cache_control, "no-cache");
+    return response;
+
+  } catch (const std::exception& ex) {
+    return MakeErrorResponse(http::status::internal_server_error, "internalError", ex.what());
+  }
+}
+
 void ApiHandler::SerializeRoads(const model::Map* map, json::object& map_json) const {
   json::array roads_json;
   for (const auto& road : map->GetRoads()) {

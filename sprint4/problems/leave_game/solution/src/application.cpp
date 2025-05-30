@@ -1,10 +1,14 @@
-// application.cpp
 #include "application.h"
 
 namespace app {
 
-Application::Application(model::Game&& game, extra_data::MapsExtra&& extra)
-    : game_(std::move(game)), maps_extra_(std::move(extra)) {
+Application::Application(model::Game&& game, extra_data::MapsExtra&& extra,
+                         const std::string& db_url)
+    : game_(std::move(game)), maps_extra_(std::move(extra)), database_(db_url) {
+  database_.Initialize();
+  players_.SetDogRetTime(game.GetSettings().dog_retirement_time);
+  tick_connection_ =
+      tick_signal_.connect([this](milliseconds delta) { players_.OnGameTick(delta, database_); });
 }
 
 Application::~Application() {
@@ -26,6 +30,10 @@ extra_data::MapsExtra& Application::GetExtraData() {
 
 model::Players& Application::GetPlayers() {
   return players_;
+}
+
+db::Database& Application::GetDatabase() {
+  return database_;
 }
 
 void Application::SetGameSettings(const std::optional<Args>& config) {

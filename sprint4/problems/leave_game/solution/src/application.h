@@ -7,6 +7,7 @@
 #include <fstream>
 
 #include "model.h"
+#include "database.h"
 #include "extra_data.h"
 #include "command_line.h"
 #include "serialization.h"
@@ -23,12 +24,15 @@ class Application {
   using milliseconds = std::chrono::milliseconds;
   using TickSignal = boost::signals2::signal<void(milliseconds)>;
 
-  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra);
+  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra,
+                       const std::string& db_url);
   ~Application();
 
   model::Game& GetGame();
   extra_data::MapsExtra& GetExtraData();
   model::Players& GetPlayers();
+
+  db::Database& GetDatabase();
 
   void SetGameSettings(const std::optional<Args>& config);
   void SetGameTicker(const std::optional<Args>& config, Strand& strand);
@@ -47,6 +51,9 @@ class Application {
   extra_data::MapsExtra maps_extra_;
   model::Players players_;
   TickSignal tick_signal_;
+  db::Database database_;
+
+  boost::signals2::connection tick_connection_;
 
   // Настройки сохранения
   std::filesystem::path save_filepath_;

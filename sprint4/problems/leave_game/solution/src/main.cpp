@@ -38,6 +38,12 @@ int main(int argc, const char* argv[]) {
     if (!config)
       return EXIT_FAILURE;
 
+    const char* db_url = std::getenv("GAME_DB_URL");
+    if (!db_url) {
+      std::cerr << "GAME_DB_URL environment variable is not set!" << std::endl;
+      return EXIT_FAILURE;
+    }
+
     // 2. Инициализируем io_context
     const unsigned num_threads = std::thread::hardware_concurrency();
     net::io_context ioc(num_threads);
@@ -45,7 +51,7 @@ int main(int argc, const char* argv[]) {
 
     // 1. Загружаем карту из файла и построить модель игры
     auto [game, maps_extra] = json_loader::LoadGamePackage(config->config_file);
-    app::Application app(std::move(game), std::move(maps_extra));
+    app::Application app(std::move(game), std::move(maps_extra), db_url);
     app.SetGameSettings(config);
     app.SetGameTicker(config, strand);
 
