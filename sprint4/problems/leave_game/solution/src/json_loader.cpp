@@ -95,6 +95,10 @@ model::Game LoadGame(const std::filesystem::path& json_path) {
   if (json_obj.contains(DEFAULT_DOG_SPEED)) {
     game.SetDefaultDogSpeed(json_obj.at(DEFAULT_DOG_SPEED).as_double());
   }
+  if (json_obj.contains(DOG_RETIREMENT_TIME)) {
+    double retirement_time = json_obj.at(DOG_RETIREMENT_TIME).as_double();
+    game.GetSettings().dog_retirement_time = retirement_time;
+  }
 
   if (json_obj.contains(DEFAULT_BAG_CAPACITY)) {
     game.SetDefaultBagCapacity(json_obj.at(DEFAULT_BAG_CAPACITY).as_int64());
@@ -129,14 +133,6 @@ GamePackage LoadGamePackage(const std::filesystem::path& json_path) {
     game.SetDefaultDogSpeed(json_obj.at(DEFAULT_DOG_SPEED).as_double());
   }
 
-  if (json_obj.contains(DOG_RETIREMENT_TIME)) {
-    double seconds = json_obj.at(DOG_RETIREMENT_TIME).as_double();
-    game.GetSettings().dog_retirement_time =
-        std::chrono::milliseconds(static_cast<int64_t>(seconds * 1000));
-  } else {
-    game.GetSettings().dog_retirement_time = std::chrono::minutes(1);  // Значение по умолчанию
-  }
-
   if (json_obj.contains(DEFAULT_BAG_CAPACITY)) {
     game.SetDefaultBagCapacity(json_obj.at(DEFAULT_BAG_CAPACITY).as_int64());
   }
@@ -148,9 +144,14 @@ GamePackage LoadGamePackage(const std::filesystem::path& json_path) {
     game.GetSettings().period = period;
 
     double probability = config.at(PROBABILITY).as_double();
-    game.GetSettings().probability = period;
+    game.GetSettings().probability = probability;
 
     game.SetLootGeneratorConfig(period, probability);
+  }
+
+  if (json_obj.contains(DOG_RETIREMENT_TIME)) {
+    double retirement_time = json_obj.at(DOG_RETIREMENT_TIME).as_double();
+    game.GetSettings().dog_retirement_time = retirement_time;
   }
 
   // Загрузка карт

@@ -2,6 +2,7 @@
 #include <boost/asio/io_context.hpp>
 #include <boost/asio/signal_set.hpp>
 #include <thread>
+#include <cstdlib>
 
 #include "json_loader.h"
 #include "request_handler.h"
@@ -27,6 +28,17 @@ void RunWorkers(unsigned n, const Fn& fn) {
   fn();
 }
 
+constexpr const char DB_URL_ENV_NAME[]{"GAME_DB_URL"};
+std::string GetAppConfigDbUrlFromEnv() {
+  std::string db_url;
+  if (const auto* url = std::getenv(DB_URL_ENV_NAME)) {
+    db_url = url;
+  } else {
+    throw std::runtime_error(DB_URL_ENV_NAME + " environment variable not found"s);
+  }
+  return db_url;
+}
+
 }  // namespace
 
 int main(int argc, const char* argv[]) {
@@ -38,12 +50,6 @@ int main(int argc, const char* argv[]) {
     if (!config)
       return EXIT_FAILURE;
 
-    const char* db_url = std::getenv("GAME_DB_URL");
-    if (!db_url) {
-      std::cerr << "GAME_DB_URL environment variable is not set!" << std::endl;
-      return EXIT_FAILURE;
-    }
-
     // 2. Инициализируем io_context
     const unsigned num_threads = std::thread::hardware_concurrency();
     net::io_context ioc(num_threads);
@@ -51,7 +57,7 @@ int main(int argc, const char* argv[]) {
 
     // 1. Загружаем карту из файла и построить модель игры
     auto [game, maps_extra] = json_loader::LoadGamePackage(config->config_file);
-    app::Application app(std::move(game), std::move(maps_extra), db_url);
+    app::Application app(std::move(game), std::move(maps_extra), GetAppConfigDbUrlFromEnv());
     app.SetGameSettings(config);
     app.SetGameTicker(config, strand);
 

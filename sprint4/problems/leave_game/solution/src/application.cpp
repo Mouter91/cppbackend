@@ -1,20 +1,25 @@
+// application.cpp
 #include "application.h"
 
 namespace app {
 
 Application::Application(model::Game&& game, extra_data::MapsExtra&& extra,
-                         const std::string& db_url)
-    : game_(std::move(game)), maps_extra_(std::move(extra)), database_(db_url) {
-  database_.Initialize();
-  players_.SetDogRetTime(game.GetSettings().dog_retirement_time);
-  tick_connection_ =
-      tick_signal_.connect([this](milliseconds delta) { players_.OnGameTick(delta, database_); });
+                         const std::string db_url)
+    : game_(std::move(game)),
+      maps_extra_(std::move(extra)),
+      database_(std::make_unique<db::Database>(db_url)) {
+  database_->Initialize();  // Проверяем и создаем таблицы при необходимости
+  players_.SetTimeWaitDog(game.GetSettings().dog_retirement_time);
 }
 
 Application::~Application() {
+  if (players_connection_.connected()) {
+    players_connection_.disconnect();
+  }
   if (save_connection_.connected()) {
     save_connection_.disconnect();
   }
+
   if (save_stream_.is_open()) {
     save_stream_.close();
   }
@@ -32,10 +37,6 @@ model::Players& Application::GetPlayers() {
   return players_;
 }
 
-db::Database& Application::GetDatabase() {
-  return database_;
-}
-
 void Application::SetGameSettings(const std::optional<Args>& config) {
   if (!config)
     return;
@@ -51,11 +52,17 @@ void Application::SetGameTicker(const std::optional<Args>& config, Strand& stran
     game_.GetSettings().ticker = std::make_shared<game_time::Ticker>(
         strand, std::chrono::milliseconds(config->tick_period),
         [&](std::chrono::milliseconds delta) {
+          // Основной тик игры
           game_.Tick(static_cast<double>(delta.count()) / 1000.0);
+
+          // Сигнал тика (может использоваться другими подписчиками)
           tick_signal_(delta);
         });
     game_.GetSettings().ticker->Start();
   }
+  players_connection_ = tick_signal_.connect([this](milliseconds delta) {
+    players_.OnTick(static_cast<double>(delta.count()) / 1000.0, &*database_);
+  });
 }
 
 void Application::SetSaveSettings(const std::optional<Args>& config) {

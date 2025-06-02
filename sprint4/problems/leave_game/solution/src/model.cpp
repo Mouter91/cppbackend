@@ -1,6 +1,7 @@
 #include "model.h"
 #include "move_info.h"
 
+#include <chrono>
 #include <stdexcept>
 
 namespace model {
@@ -222,7 +223,6 @@ double GameSession::GetMapDefaultSpeed() const {
 
 void GameSession::MovePlayer(Dog::Id id, double delta_time) {
   auto& dog = dogs_[id];
-  auto old_postion = dog->GetPosition();
   auto new_position = CalculateNewPosition(dog->GetPosition(), dog->GetSpeed(), delta_time);
 
   if (IsWithinAnyRegion(new_position, regions_)) {
@@ -231,10 +231,7 @@ void GameSession::MovePlayer(Dog::Id id, double delta_time) {
     MoveInfo::Position max_pos = AdjustPositionToMaxRegion(dog);
     dog->MoveDog(max_pos);
     dog->StopDog();
-    new_position = max_pos;
   }
-
-  dog->SetIsMove(!(old_postion == new_position));
 }
 
 void GameSession::StopPlayer(Dog::Id id) {
@@ -521,8 +518,9 @@ void Game::Tick(double delta_time) {
 }
 
 //------------------------Player-------------------------------------
-Player::Player(std::shared_ptr<model::Dog> dog, std::shared_ptr<model::GameSession> game_session)
-    : dog_(dog), game_session_(game_session), join_time_(std::chrono::steady_clock::now()) {
+Player::Player(std::shared_ptr<model::Dog> dog, std::shared_ptr<model::GameSession> game_session,
+               double time)
+    : dog_(dog), game_session_(game_session), join_game_(time) {
   size_t bag_capacity = game_session->GetMap().GetBagCapacity();
   dog_->SetBagCapacity(bag_capacity);
   game_session->AddDog(dog_);
@@ -548,7 +546,7 @@ const std::shared_ptr<Dog> Player::GetDogPlayer() const {
 //--------------------------PlayerTokens----------------------------
 
 Token Players::AddPlayer(std::shared_ptr<Dog> dog, std::shared_ptr<GameSession> game_session) {
-  std::shared_ptr<Player> player = std::make_shared<Player>(dog, game_session);
+  std::shared_ptr<Player> player = std::make_shared<Player>(dog, game_session, server_uptime_);
   Token token = player_tokens_.AddPlayer(player);
   players_[{dog->GetId(), *(game_session->GetMapId())}] =
       std::make_shared<Player>(dog, game_session);

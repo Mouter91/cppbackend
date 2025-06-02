@@ -28,14 +28,14 @@ constexpr const char* HEIGHT = "h";
 constexpr const char* OFFSET_X = "offsetX";
 constexpr const char* OFFSET_Y = "offsetY";
 
+constexpr const char* DOG_RETIREMENT_TIME = "dogRetirementTime";
+
 constexpr const char* LOOT_GENERATOR_CONFIG = "lootGeneratorConfig";
 constexpr const char* PERIOD = "period";
 constexpr const char* PROBABILITY = "probability";
 constexpr const char* LOOT_TYPES = "lootTypes";
 constexpr const char* DEFAULT_BAG_CAPACITY = "defaultBagCapacity";
 constexpr const char* BAG_CAPACITY = "bagCapacity";
-
-constexpr const char* DOG_RETIREMENT_TIME = "dogRetirementTime";
 }  // namespace json_keys
 
 struct GamePackage {

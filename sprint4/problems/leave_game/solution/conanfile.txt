@@ -1,7 +1,7 @@
 [requires]
-libpqxx/7.9.2
-boost/1.78.0
+boost/1.86.0
 catch2/3.3.0
+libpqxx/7.9.2
 
 [generators]
 cmake

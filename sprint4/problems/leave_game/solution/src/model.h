@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -16,12 +17,12 @@
 #include <boost/uuid/uuid_io.hpp>
 #include <boost/functional/hash.hpp>
 
-#include "database.h"
 #include "tagged.h"
 #include "move_info.h"
 #include "ticker.h"
 #include "loot_generator.h"
 #include "collision_detector.h"
+#include "database.h"
 
 namespace model {
 
@@ -319,23 +320,13 @@ class Dog {
   int GetScore() const;
   void AddScore(int value);
 
-  void SetIsMove(bool moving) {
-    is_move = moving;
-  }
-
-  bool IsMoving() {
-    return is_move;
-  }
-
  private:
   std::string name_;
   Id id_;
   int score_ = 0;
-  bool is_move = false;
 
   MoveInfo state_;
-  double default_dog_speed_ = 0.0;
-
+  double default_dog_speed_ = 1.0;
   Bag bag_;
 };
 
@@ -435,8 +426,8 @@ class GameSession {
     return ptr->second;  // Возвращаем shared_ptr<Dog>
   }
 
-  void RemoveDog(Dog::Id id) {
-    dogs_.erase(id);
+  void DeleteDog(Dog::Id dog_id) {
+    dogs_.erase(dog_id);
   }
 
  private:
@@ -472,7 +463,7 @@ class GameSession {
 class Player {
  public:
   Player() = delete;
-  Player(std::shared_ptr<Dog> dog, std::shared_ptr<GameSession> game_session);
+  Player(std::shared_ptr<Dog> dog, std::shared_ptr<GameSession> game_session, double time = 0);
 
   const Dog::Id GetDogId() const;
   const std::shared_ptr<GameSession> GetGameSession() const;
@@ -480,27 +471,33 @@ class Player {
 
   void MovePlayer(std::string direction = "");
 
-  void UpdateInactiveTime(std::chrono::milliseconds delta) {
-    if (!dog_->IsMoving()) {
-      inactive_time_ += delta;
+  void CheckActivityDog(double delta) {
+    if (dog_->GetSpeed() == MoveInfo::Speed{}) {
+      inactive_time += delta;
     } else {
-      inactive_time_ = std::chrono::milliseconds{0};
+      live_time += delta;
     }
   }
 
-  bool IsInactive(std::chrono::milliseconds max_inactive_time) const {
-    return inactive_time_ >= max_inactive_time;
+  double GetStopTime() {
+    return inactive_time;
   }
 
-  double GetPlayTime() const {
-    return std::chrono::duration<double>(std::chrono::steady_clock::now() - join_time_).count();
+  double GetJoinTime() const {
+    return join_game_;
+  }
+
+  void SetStopTime(double time) {
+    inactive_time = time;
   }
 
  private:
   std::shared_ptr<Dog> dog_;
   std::shared_ptr<GameSession> game_session_;
-  std::chrono::steady_clock::time_point join_time_;
-  std::chrono::milliseconds inactive_time_{0};
+
+  double inactive_time{0};
+  double join_game_{0};
+  double live_time{0};
 };
 
 class PlayerTokens {
@@ -557,6 +554,44 @@ class Players {
     return player_tokens_;
   }
 
+  void OnTick(double delta, db::Database* database) {
+    server_uptime_ += delta;
+
+    std::vector<Token> to_remove;
+    for (auto& [token, player] : player_tokens_.GetTokenToPlayer()) {
+      player->CheckActivityDog(delta);
+      auto dog = player->GetDogPlayer();
+
+      if (dog->GetSpeed() == MoveInfo::Speed{} && player->GetStopTime() >= time_wait_) {
+        // Сохраняем рекорд перед удалением
+        auto dog = player->GetDogPlayer();
+        auto play_time = server_uptime_ - player->GetJoinTime();
+
+        if (database) {
+          database->AddRetiredPlayer(dog->GetName(), dog->GetScore(), play_time);
+        }
+
+        to_remove.push_back(token);
+      }
+    }
+
+    // Удаляем пенсионеров
+    for (const auto& token : to_remove) {
+      auto player = player_tokens_.FindPlayerByToken(token);
+      if (player) {
+        auto dog_id = player->GetDogId();
+        auto map_id = player->GetGameSession()->GetMapId();
+        players_.erase({dog_id, *map_id});
+        player->GetGameSession()->DeleteDog(dog_id);
+      }
+      player_tokens_.GetTokenToPlayer().erase(token);
+    }
+  }
+
+  double GetServerUptime() const {
+    return server_uptime_;
+  }
+
   void ClearAll() {
     player_tokens_.Clear();  // Очищаем токены
     players_.clear();        // Очищаем всех игроков
@@ -566,42 +601,16 @@ class Players {
     return players_;
   }
 
-  void SetDogRetTime(std::chrono::milliseconds& dog_retirement_time) {
-    dog_retirement_time_ = dog_retirement_time;
-  }
-
-  void OnGameTick(std::chrono::milliseconds delta, db::Database& database) {
-    std::vector<Token> to_remove;
-    for (auto& [token, player] : player_tokens_.GetTokenToPlayer()) {
-      player->UpdateInactiveTime(delta);
-
-      if (player->IsInactive(dog_retirement_time_)) {
-        auto dog = player->GetDogPlayer();
-        auto session = player->GetGameSession();
-        database.AddRetiredPlayer(dog->GetName(), dog->GetScore(), player->GetPlayTime());
-        // 2. Удаляем собаку из игровой сессии
-        if (session && session->HasDog(dog->GetId())) {
-          session->RemoveDog(dog->GetId());  // Убедись, что метод RemoveDog реализован
-        }
-
-        // 3. Удаляем игрока из общего списка
-        players_.erase({dog->GetId(), *session->GetMap().GetId()});
-
-        // 4. Запоминаем токен для удаления
-        to_remove.push_back(token);
-      }
-    }
-
-    // 5. Удаляем токены
-    for (const auto& token : to_remove) {
-      player_tokens_.GetTokenToPlayer().erase(token);
-    }
+  void SetTimeWaitDog(double time) {
+    time_wait_ = time;
   }
 
  private:
+  double server_uptime_{0};
+  double time_wait_{60};
+
   PlayerTokens player_tokens_;
   AllPlayers players_;
-  std::chrono::milliseconds dog_retirement_time_{60000};
 };
 
 class Game {
@@ -620,7 +629,7 @@ class Game {
     double probability = 0;
     double period = 0;
 
-    std::chrono::milliseconds dog_retirement_time{60000};
+    double dog_retirement_time = 60;
 
     bool IsAutoTickEnabled() const {
       return ticker != nullptr;

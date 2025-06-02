@@ -1,12 +1,13 @@
 #pragma once
 #include <boost/json/serialize.hpp>
 #include <boost/json/serializer.hpp>
-#include <boost/algorithm/string.hpp>
 #include "application.h"
 #define BOOST_BEAST_USE_STD_STRING_VIEW
 
 #include <boost/json.hpp>
 #include <boost/beast/http.hpp>
+#include <boost/url.hpp>
+#include <boost/lexical_cast.hpp>
 
 #include "http_server.h"
 #include "model.h"
@@ -78,16 +79,22 @@ class ApiHandler : public BaseHandler {
               {"/api/v1/maps",
                {{http::verb::get, &ApiHandler::HandleGetMaps},
                 {http::verb::head, &ApiHandler::HandleGetMaps}}},
-              {"/api/v1/game/state",
-               {{http::verb::get, &ApiHandler::HandleGetGameState},
-                {http::verb::head, &ApiHandler::HandleGetGameState}}},
               {"/api/v1/game/records",
                {{http::verb::get, &ApiHandler::HandleGetRecords},
                 {http::verb::head, &ApiHandler::HandleGetRecords}}},
+              {"/api/v1/game/state",
+               {{http::verb::get, &ApiHandler::HandleGetGameState},
+                {http::verb::head, &ApiHandler::HandleGetGameState}}},
               {"/api/v1/game/player/action", {{http::verb::post, &ApiHandler::HandlePlayerAction}}},
               {"/api/v1/game/tick", {{http::verb::post, &ApiHandler::HandleGameTick}}}};
 
-      auto it = handlers.find(req.target());
+      // Извлекаем базовый путь без параметров
+      std::string_view target = req.target();
+      size_t query_start = target.find('?');
+      std::string_view base_path = target.substr(0, query_start);
+
+      // Ищем обработчик по базовому пути
+      auto it = handlers.find(base_path);
       if (it != handlers.end()) {
         for (const auto& [verb, handler] : it->second) {
           if (verb == req.method()) {
@@ -101,7 +108,6 @@ class ApiHandler : public BaseHandler {
         return send(MakeMethodNotAllowedError(allowed_methods));
       }
 
-      // Handle map ID requests
       if (req.target().starts_with("/api/v1/maps/") &&
           req.target().size() > strlen("/api/v1/maps/")) {
         auto map_id = model::Map::Id{std::string(req.target().substr(strlen("/api/v1/maps/")))};
@@ -112,7 +118,7 @@ class ApiHandler : public BaseHandler {
         }
       }
 
-      return send(MakeBadRequestError());
+      return send(MakeErrorResponse(http::status::not_found, "notFound", "Endpoint not found"));
     };
 
     net::dispatch(strand_, std::move(handle));

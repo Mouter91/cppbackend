@@ -18,8 +18,6 @@ find_package(Threads REQUIRED)
 
 # Создаем статическую библиотеку с игровой моделью
 add_library(game_model STATIC
-    src/model.h
-    src/model.cpp
     src/tagged.h
     src/boost_json.cpp
     src/log.h
@@ -54,10 +52,12 @@ add_executable(game_server
     src/database.h
     src/database.cpp
     src/connection_pool.h
+    src/model.h
+    src/model.cpp
 )
 
 # Линкуем библиотеку game_model с необходимыми зависимостями
-target_link_libraries(game_model PRIVATE CONAN_PKG::boost CONAN_PKG::libpqxx)
+target_link_libraries(game_model PRIVATE CONAN_PKG::boost)
 
 # Линкуем основной исполняемый файл
 target_link_libraries(game_server PRIVATE 
@@ -78,8 +78,7 @@ target_include_directories(game_server_tests PRIVATE
     ${CMAKE_SOURCE_DIR}/src  # Для доступа к заголовочным файлам
 )
 
-target_link_libraries(game_server_tests PRIVATE
-    CONAN_PKG::libpqxx
+target_link_libraries(game_server_tests PRIVATE 
     CONAN_PKG::catch2 
     CONAN_PKG::boost
     game_model  # Используем нашу библиотеку модели

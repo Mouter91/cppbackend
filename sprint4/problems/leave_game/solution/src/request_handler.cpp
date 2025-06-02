@@ -241,7 +241,7 @@ StringResponse ApiHandler::HandlePlayerAction(const StringRequest& req) {
       return MakeBadRequestError("Invalid move direction");
     }
 
-    return ExecuteAuthorized(req, [this, &req, move_direction](const model::Player& player) {
+    return ExecuteAuthorized(req, [this, &req, move_direction](model::Player& player) {
       auto game_session = player.GetGameSession();
       auto dog_id = player.GetDogId();
       auto dogs = game_session->GetDogs();
@@ -253,9 +253,16 @@ StringResponse ApiHandler::HandlePlayerAction(const StringRequest& req) {
 
       auto dog = dog_it->second;
       dog->SetDogDirSpeed(move_direction);
+      if (!move_direction.empty()) {
+        player.SetStopTime(0);  // активность — сброс
+      } else {
+        if (player.GetStopTime() == 0) {
+          // Это первая остановка — начинаем отсчёт времени
+          player.CheckActivityDog(0);
+        }
+      }
       return MakeJsonResponse(http::status::ok, json::object{}, req.version(), req.keep_alive());
     });
-
   } catch (const boost::system::system_error&) {
     return MakeBadRequestError("Failed to parse action");
   } catch (const std::exception& ex) {
@@ -310,55 +317,56 @@ StringResponse ApiHandler::HandleGameTick(const StringRequest& req) {
 }
 
 StringResponse ApiHandler::HandleGetRecords(const StringRequest& req) {
+  using namespace boost::urls;
+  using namespace boost::json;
+
   try {
-    // Парсим параметры запроса
-    auto params = req.target().find('?');
+    // Парсим URL
+    auto parsed_url = parse_origin_form(std::string(req.target()));
+    if (!parsed_url.has_value()) {
+      return MakeJsonResponse(http::status::ok, array{}, req.version(), req.keep_alive());
+    }
+
+    // Дефолтные значения
     int start = 0;
-    int max_items = 100;
+    int maxItems = 100;
 
-    if (params != std::string::npos) {
-      std::string_view query = req.target().substr(params + 1);
-      std::vector<std::string_view> pairs;
-      boost::algorithm::split(pairs, query, [](char c) { return c == '&'; });
-
-      for (const auto& pair : pairs) {
-        auto eq_pos = pair.find('=');
-        if (eq_pos == std::string_view::npos)
-          continue;
-
-        std::string_view key = pair.substr(0, eq_pos);
-        std::string_view value = pair.substr(eq_pos + 1);
-
-        if (key == "start") {
-          start = std::stoi(std::string(value));
-        } else if (key == "maxItems") {
-          max_items = std::stoi(std::string(value));
-          if (max_items > 100) {
-            return MakeErrorResponse(http::status::bad_request, "invalidArgument",
-                                     "maxItems cannot exceed 100");
+    // Обрабатываем параметры запроса
+    for (auto const& param : parsed_url->params()) {
+      if (param.key == "start") {
+        try {
+          start = boost::lexical_cast<int>(param.value);
+        } catch (...) {
+          // Если не число, оставляем дефолтное значение
+        }
+      } else if (param.key == "maxItems") {
+        try {
+          maxItems = boost::lexical_cast<int>(param.value);
+          if (maxItems > 100) {
+            return MakeBadRequestError("maxItems must be less than or equal to 100");
           }
+        } catch (...) {
+          // Если не число, оставляем дефолтное значение
         }
       }
     }
 
-    // Получаем данные из базы
-    auto result = app_.GetDatabase().GetRetiredPlayers(start, max_items);
+    // Получаем записи из БД
+    auto result = app_.GetDatabase().GetRetiredPlayers(start, maxItems);
 
-    // Формируем ответ
-    json::array records_json;
+    // Формируем JSON-ответ
+    array records;
     for (const auto& row : result) {
-      records_json.push_back(json::object{{"name", row["name"].as<std::string>()},
-                                          {"score", row["score"].as<int>()},
-                                          {"playTime", row["play_time"].as<double>()}});
+      records.emplace_back(object{{"name", row["name"].c_str()},
+                                  {"score", row["score"].as<int>()},
+                                  {"playTime", row["play_time"].as<double>()}});
     }
 
-    auto response =
-        MakeJsonResponse(http::status::ok, records_json, req.version(), req.keep_alive());
-    response.set(http::field::cache_control, "no-cache");
-    return response;
+    return MakeJsonResponse(http::status::ok, records, req.version(), req.keep_alive());
 
   } catch (const std::exception& ex) {
-    return MakeErrorResponse(http::status::internal_server_error, "internalError", ex.what());
+    // В случае любой ошибки возвращаем пустой массив
+    return MakeJsonResponse(http::status::ok, array{}, req.version(), req.keep_alive());
   }
 }
 

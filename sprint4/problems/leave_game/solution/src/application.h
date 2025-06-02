@@ -1,16 +1,17 @@
 #pragma once
 
 #include <boost/signals2.hpp>
+#include <boost/algorithm/string/split.hpp>
 #include <chrono>
 #include <string>
 #include <filesystem>
 #include <fstream>
 
 #include "model.h"
-#include "database.h"
 #include "extra_data.h"
 #include "command_line.h"
 #include "serialization.h"
+#include "database.h"
 
 namespace net = boost::asio;
 namespace sig = boost::signals2;
@@ -24,15 +25,12 @@ class Application {
   using milliseconds = std::chrono::milliseconds;
   using TickSignal = boost::signals2::signal<void(milliseconds)>;
 
-  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra,
-                       const std::string& db_url);
+  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra, const std::string db_url);
   ~Application();
 
   model::Game& GetGame();
   extra_data::MapsExtra& GetExtraData();
   model::Players& GetPlayers();
-
-  db::Database& GetDatabase();
 
   void SetGameSettings(const std::optional<Args>& config);
   void SetGameTicker(const std::optional<Args>& config, Strand& strand);
@@ -43,6 +41,10 @@ class Application {
 
   void SaveStateBeforeExit();
 
+  db::Database& GetDatabase() {
+    return *database_;
+  }
+
  private:
   void TrySaveState(milliseconds delta);
   void AtomicSave();
@@ -50,10 +52,10 @@ class Application {
   model::Game game_;
   extra_data::MapsExtra maps_extra_;
   model::Players players_;
+  std::unique_ptr<db::Database> database_;
   TickSignal tick_signal_;
-  db::Database database_;
 
-  boost::signals2::connection tick_connection_;
+  sig::connection players_connection_;
 
   // Настройки сохранения
   std::filesystem::path save_filepath_;

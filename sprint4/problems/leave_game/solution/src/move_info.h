@@ -55,6 +55,14 @@ struct MoveInfo {
   struct Speed {
     Movement x, y;
 
+    [[nodiscard]] bool operator==(const Speed& other) const {
+      return std::abs(x - other.x) < EPSILON && std::abs(y - other.y) < EPSILON;
+    }
+
+    [[nodiscard]] bool operator!=(const Speed& other) const {
+      return !(*this == other);
+    }
+
    private:
     friend class boost::serialization::access;
     template <class Archive>
