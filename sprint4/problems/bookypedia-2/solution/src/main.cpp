@@ -11,7 +11,7 @@ namespace {
 constexpr const char DB_URL_ENV_NAME[]{"BOOKYPEDIA_DB_URL"};
 
 bookypedia::AppConfig GetConfigFromEnv() {
-    bookypedia::AppConfig config;    
+    bookypedia::AppConfig config;
     if (const auto* url = std::getenv(DB_URL_ENV_NAME)) {
         config.db_url = url;
     } else {

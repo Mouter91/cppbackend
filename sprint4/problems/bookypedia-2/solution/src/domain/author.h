@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "../util/tagged_uuid.h"
+#include "../ui/view.h"
 
 namespace domain {
 
@@ -35,8 +36,8 @@ private:
 class AuthorRepository {
 public:
     virtual void Save(const Author& author) = 0;
-    virtual std::vector<Author> GetAuthors() = 0;
-
+    virtual std::vector<ui::detail::AuthorInfo> Get() = 0;
+    virtual std::optional<ui::detail::AuthorInfo> GetAuthorIdIfExists(const std::string& name) = 0;
 protected:
     ~AuthorRepository() = default;
 };

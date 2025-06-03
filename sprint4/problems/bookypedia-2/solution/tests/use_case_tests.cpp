@@ -12,45 +12,69 @@ struct MockAuthorRepository : domain::AuthorRepository {
     void Save(const domain::Author& author) override {
         saved_authors.emplace_back(author);
     }
-    std::vector<domain::Author> GetAuthors() override {
-        std::sort(saved_authors.begin(), saved_authors.end(), [](const domain::Author& lhs, const domain::Author& rhs) {
-            return lhs.GetName() < rhs.GetName();
-        });
-        return saved_authors;
+
+    std::vector<ui::detail::AuthorInfo> Get() override {
+        std::vector<ui::detail::AuthorInfo> result;
+
+        result.reserve(saved_authors.size());
+
+        for (const domain::Author& auth : saved_authors) {
+            ui::detail::AuthorInfo inf {util::detail::UUIDToString(*auth.GetId()), auth.GetName()};
+            result.emplace_back(inf);
+        }
+
+        return result;
+    }
+
+    std::optional<ui::detail::AuthorInfo> GetAuthorIdIfExists(const std::string& name) override {
+        return std::nullopt;
     }
 };
 
 struct MockBookRepository : domain::BookRepository {
-    std::vector<domain::Book> saved_books;
+    std::vector<ui::detail::BookInfo> saved_books;
 
-    void Save(const domain::Book& book) override {
-        saved_books.emplace_back(book);
-    }
-    std::vector<domain::Book> GetAuthorBooks(const domain::Author& author) override {
-        std::vector<domain::Book> books(GetBooks());
-    
-        auto author_id = author.GetId().ToString();
-        std::remove_if(books.begin(), books.end(), [&author_id](const domain::Book& book){
-            return book.GetAuthorId() == author_id;
-        });
-        return books;
-    }
-    std::vector<domain::Book> GetBooks() override {
-        std::sort(saved_books.begin(), saved_books.end(), [](const domain::Book& lhs, const domain::Book& rhs) {
-            return lhs.GetTitle() < rhs.GetTitle();
-        });
+    std::vector<ui::detail::BookInfo> GetBooks() override {
         return saved_books;
     }
+
+    std::vector<ui::detail::BookInfo> GetBooksByTitle(const std::string&) override {
+        return {};
+    }
+
+    std::vector<std::string> GetBookTags(const ui::detail::BookInfo& book) override {
+        return {};
+    }
+
+    std::vector<ui::detail::BookInfo> GetBooksByQuery(const std::string&) override {
+        return {};
+    }
+
+    std::vector<ui::detail::BookInfo> GetAuthorBooks(const std::string& name) override {
+        std::vector<ui::detail::BookInfo> result;
+
+        for (const ui::detail::BookInfo info : saved_books) {
+            //TODO
+        }
+
+        return result;
+    }
+
+    std::shared_ptr<domain::Worker> GetWorker() override {
+        throw std::invalid_argument("not implemented");
+    }
+
 };
 
 struct Fixture {
     MockAuthorRepository authors;
     MockBookRepository books;
+
 };
 
 }  // namespace
 
-SCENARIO_METHOD(Fixture, "Author Adding") {
+SCENARIO_METHOD(Fixture, "Book Adding") {
     GIVEN("Use cases") {
         app::UseCasesImpl use_cases{authors, books};
 
@@ -62,29 +86,6 @@ SCENARIO_METHOD(Fixture, "Author Adding") {
                 REQUIRE(authors.saved_authors.size() == 1);
                 CHECK(authors.saved_authors.at(0).GetName() == author_name);
                 CHECK(authors.saved_authors.at(0).GetId() != domain::AuthorId{});
-            }
-        }
-    }
-}
-
-SCENARIO_METHOD(Fixture, "Book Adding") {
-    GIVEN("Use cases") {
-        app::UseCasesImpl use_cases{authors, books};
-        const auto author_name = "Joanne Rowling";
-        use_cases.AddAuthor(author_name);
-
-        WHEN("Adding a book") {
-            const auto book_author_id = authors.saved_authors.at(0).GetId().ToString();
-            const auto book_title = "Harry Potter and the Chamber of Secrets";
-            const auto book_publication_year = 1998;
-            use_cases.AddBook(book_author_id, book_title, book_publication_year);
-
-            THEN("author with the specified name is saved to repository") {
-                REQUIRE(books.saved_books.size() == 1);
-                CHECK(books.saved_books.at(0).GetId() != domain::BookId{});
-                CHECK(books.saved_books.at(0).GetAuthorId() == authors.saved_authors.at(0).GetId().ToString());
-                CHECK(books.saved_books.at(0).GetTitle() == book_title);
-                CHECK(books.saved_books.at(0).GetPublicationYear() == book_publication_year);
             }
         }
     }

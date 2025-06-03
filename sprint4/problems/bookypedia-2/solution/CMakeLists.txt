@@ -19,10 +19,9 @@ add_library(libbookypedia STATIC
 	src/app/use_cases_impl.h
 	src/domain/author.cpp
 	src/domain/author.h
+        src/domain/book.h
+        src/domain/book_fwd.h
 	src/domain/author_fwd.h
-	src/domain/book.cpp
-	src/domain/book.h
-	src/domain/book_fwd.h
 	src/util/tagged.h
 	src/util/tagged_uuid.cpp
 	src/util/tagged_uuid.h

@@ -3,6 +3,7 @@
 #include <iosfwd>
 #include <map>
 #include <string>
+#include <utility>
 
 namespace menu {
 
@@ -12,7 +13,8 @@ public:
 
     Menu(std::istream& input, std::ostream& output);
 
-    void AddAction(std::string action_name, std::string args, std::string description, Handler handler);
+    void AddAction(std::string action_name, std::string args, std::string description,
+                   Handler handler);
 
     void Run();
 
