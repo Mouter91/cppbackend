@@ -12,20 +12,17 @@ find_package(Threads REQUIRED)
 add_library(libbookypedia STATIC
 	src/menu/menu.cpp
 	src/menu/menu.h
-	src/ui/actions.cpp
-	src/ui/actions.h
+	src/ui/view.cpp
+	src/ui/view.h
 	src/app/use_cases.h
 	src/app/use_cases_impl.cpp
 	src/app/use_cases_impl.h
 	src/domain/author.cpp
 	src/domain/author.h
 	src/domain/author_fwd.h
-	src/domain/book.h
 	src/domain/book.cpp
+	src/domain/book.h
 	src/domain/book_fwd.h
-	src/domain/tag.h
-	src/domain/tag.cpp
-	src/domain/tag_fwd.h
 	src/util/tagged.h
 	src/util/tagged_uuid.cpp
 	src/util/tagged_uuid.h
@@ -45,4 +42,4 @@ add_executable(tests
 	tests/use_case_tests.cpp
 	tests/tagged_uuid_tests.cpp
 )
-target_link_libraries(tests PRIVATE CONAN_PKG::catch2 libbookypedia)
+target_link_libraries(tests PRIVATE CONAN_PKG::catch2 CONAN_PKG::gtest libbookypedia)
