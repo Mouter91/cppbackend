@@ -67,7 +67,8 @@ class ApiHandler : public BaseHandler {
 
   template <typename Body, typename Allocator, typename Send>
   void HandleRequest(http::request<Body, http::basic_fields<Allocator>>&& req, Send&& send) {
-    auto handle = [this, req = std::move(req), send = std::forward<Send>(send)]() mutable {
+    auto handle = [this, safe_req = http::request<Body, http::basic_fields<Allocator>>(req),
+                   send = std::forward<Send>(send)]() mutable {
       static const std::unordered_map<
           std::string_view,
           std::vector<std::pair<http::verb, StringResponse (ApiHandler::*)(const StringRequest&)>>>
@@ -88,17 +89,15 @@ class ApiHandler : public BaseHandler {
               {"/api/v1/game/player/action", {{http::verb::post, &ApiHandler::HandlePlayerAction}}},
               {"/api/v1/game/tick", {{http::verb::post, &ApiHandler::HandleGameTick}}}};
 
-      // Извлекаем базовый путь без параметров
-      std::string_view target = req.target();
+      std::string_view target = safe_req.target();
       size_t query_start = target.find('?');
       std::string_view base_path = target.substr(0, query_start);
 
-      // Ищем обработчик по базовому пути
       auto it = handlers.find(base_path);
       if (it != handlers.end()) {
         for (const auto& [verb, handler] : it->second) {
-          if (verb == req.method()) {
-            return send((this->*handler)(req));
+          if (verb == safe_req.method()) {
+            return send((this->*handler)(safe_req));
           }
         }
         std::vector<std::string_view> allowed_methods;
@@ -108,11 +107,12 @@ class ApiHandler : public BaseHandler {
         return send(MakeMethodNotAllowedError(allowed_methods));
       }
 
-      if (req.target().starts_with("/api/v1/maps/") &&
-          req.target().size() > strlen("/api/v1/maps/")) {
-        auto map_id = model::Map::Id{std::string(req.target().substr(strlen("/api/v1/maps/")))};
-        if (req.method() == http::verb::get || req.method() == http::verb::head) {
-          return send(HandleGetMapById(req, map_id));
+      if (safe_req.target().starts_with("/api/v1/maps/") &&
+          safe_req.target().size() > strlen("/api/v1/maps/")) {
+        auto map_id =
+            model::Map::Id{std::string(safe_req.target().substr(strlen("/api/v1/maps/")))};
+        if (safe_req.method() == http::verb::get || safe_req.method() == http::verb::head) {
+          return send(HandleGetMapById(safe_req, map_id));
         } else {
           return send(MakeMethodNotAllowedError({"GET", "HEAD"}));
         }

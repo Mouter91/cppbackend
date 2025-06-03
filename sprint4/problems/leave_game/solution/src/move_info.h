@@ -1,7 +1,7 @@
-// move_info.h
 #pragma once
 
 #include <cmath>
+#include <unordered_map>
 #include <boost/serialization/access.hpp>
 
 using Coord = double;

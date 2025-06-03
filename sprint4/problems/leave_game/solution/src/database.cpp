@@ -11,10 +11,12 @@ Database::Database(const std::string& db_url)
         }
         return conn;
       }) {
-  // Тестируем соединение сразу
+#ifndef NDEBUG
+  // Тестируем соединение сразу в debug-режиме
   auto conn = pool_.GetConnection();
   pqxx::nontransaction ntx(*conn);
   ntx.exec("SELECT 1");  // Простой тестовый запрос
+#endif
 }
 
 void Database::Initialize() {

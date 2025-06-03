@@ -192,6 +192,8 @@ StringResponse ApiHandler::HandleGetGameState(const StringRequest& req) {
         case MoveInfo::Direction::EAST:
           direction = "R";
           break;
+        default:
+          assert(false && "Unexpected direction in MoveInfo::Direction");
       }
 
       json::array bag_json;
@@ -232,37 +234,46 @@ StringResponse ApiHandler::HandlePlayerAction(const StringRequest& req) {
     json::value request_body = json::parse(req.body());
     json::object request_obj = request_body.as_object();
 
-    if (!request_obj.contains("move")) {
-      return MakeBadRequestError("Move direction is required");
+    std::string move_direction;
+
+    if (request_obj.contains("move")) {
+      move_direction = json::value_to<std::string>(request_obj.at("move"));
+      if (!ValidateMoveDirection(move_direction)) {
+        return MakeBadRequestError("Invalid move direction");
+      }
+    } else {
+      // Если поле "move" отсутствует — интерпретируем как пустое движение (остановка)
+      move_direction = "";
     }
 
-    std::string move_direction = json::value_to<std::string>(request_obj.at("move"));
-    if (!ValidateMoveDirection(move_direction)) {
-      return MakeBadRequestError("Invalid move direction");
-    }
-
-    return ExecuteAuthorized(req, [this, &req, move_direction](model::Player& player) {
+    return ExecuteAuthorized(req, [this, req, move_direction](model::Player& player) {
       auto game_session = player.GetGameSession();
       auto dog_id = player.GetDogId();
       auto dogs = game_session->GetDogs();
       auto dog_it = dogs.find(dog_id);
+
       if (dog_it == dogs.end()) {
         return MakeErrorResponse(http::status::internal_server_error, "internalError",
                                  "Dog not found in game session");
       }
 
       auto dog = dog_it->second;
-      dog->SetDogDirSpeed(move_direction);
+
       if (!move_direction.empty()) {
+        player.SetTryingToMove(true);
         player.SetStopTime(0);  // активность — сброс
       } else {
+        player.SetTryingToMove(false);
         if (player.GetStopTime() == 0) {
-          // Это первая остановка — начинаем отсчёт времени
-          player.CheckActivityDog(0);
+          player.CheckActivityDog(0);  // запуск отсчёта бездействия
         }
       }
+
+      dog->SetDogDirSpeed(move_direction);
+
       return MakeJsonResponse(http::status::ok, json::object{}, req.version(), req.keep_alive());
     });
+
   } catch (const boost::system::system_error&) {
     return MakeBadRequestError("Failed to parse action");
   } catch (const std::exception& ex) {
@@ -321,23 +332,20 @@ StringResponse ApiHandler::HandleGetRecords(const StringRequest& req) {
   using namespace boost::json;
 
   try {
-    // Парсим URL
     auto parsed_url = parse_origin_form(std::string(req.target()));
     if (!parsed_url.has_value()) {
       return MakeJsonResponse(http::status::ok, array{}, req.version(), req.keep_alive());
     }
 
-    // Дефолтные значения
     int start = 0;
     int maxItems = 100;
 
-    // Обрабатываем параметры запроса
     for (auto const& param : parsed_url->params()) {
       if (param.key == "start") {
         try {
           start = boost::lexical_cast<int>(param.value);
-        } catch (...) {
-          // Если не число, оставляем дефолтное значение
+        } catch (const boost::bad_lexical_cast&) {
+          // оставить значение по умолчанию
         }
       } else if (param.key == "maxItems") {
         try {
@@ -345,16 +353,14 @@ StringResponse ApiHandler::HandleGetRecords(const StringRequest& req) {
           if (maxItems > 100) {
             return MakeBadRequestError("maxItems must be less than or equal to 100");
           }
-        } catch (...) {
-          // Если не число, оставляем дефолтное значение
+        } catch (const boost::bad_lexical_cast&) {
+          // оставить значение по умолчанию
         }
       }
     }
 
-    // Получаем записи из БД
     auto result = app_.GetDatabase().GetRetiredPlayers(start, maxItems);
 
-    // Формируем JSON-ответ
     array records;
     for (const auto& row : result) {
       records.emplace_back(object{{"name", row["name"].c_str()},
@@ -365,7 +371,6 @@ StringResponse ApiHandler::HandleGetRecords(const StringRequest& req) {
     return MakeJsonResponse(http::status::ok, records, req.version(), req.keep_alive());
 
   } catch (const std::exception& ex) {
-    // В случае любой ошибки возвращаем пустой массив
     return MakeJsonResponse(http::status::ok, array{}, req.version(), req.keep_alive());
   }
 }

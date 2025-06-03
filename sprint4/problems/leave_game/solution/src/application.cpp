@@ -4,7 +4,7 @@
 namespace app {
 
 Application::Application(model::Game&& game, extra_data::MapsExtra&& extra,
-                         const std::string db_url)
+                         const std::string& db_url)
     : game_(std::move(game)),
       maps_extra_(std::move(extra)),
       database_(std::make_unique<db::Database>(db_url)) {

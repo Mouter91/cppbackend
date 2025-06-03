@@ -15,7 +15,6 @@
 #include <boost/uuid/uuid.hpp>
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <boost/functional/hash.hpp>
 
 #include "tagged.h"
 #include "move_info.h"
@@ -472,14 +471,14 @@ class Player {
   void MovePlayer(std::string direction = "");
 
   void CheckActivityDog(double delta) {
-    if (dog_->GetSpeed() == MoveInfo::Speed{}) {
-      inactive_time += delta;
+    if (!trying_to_move_ && dog_->GetSpeed() == MoveInfo::Speed{}) {
+      inactive_time += delta;  // не двигается и не пытается — бездействие
     } else {
-      live_time += delta;
+      live_time += delta;  // либо двигается, либо пытается двигаться — активность
     }
   }
 
-  double GetStopTime() {
+  double GetStopTime() const {
     return inactive_time;
   }
 
@@ -491,6 +490,14 @@ class Player {
     inactive_time = time;
   }
 
+  void SetTryingToMove(bool flag) {
+    trying_to_move_ = flag;
+  }
+
+  bool IsTryingToMove() const {
+    return trying_to_move_;
+  }
+
  private:
   std::shared_ptr<Dog> dog_;
   std::shared_ptr<GameSession> game_session_;
@@ -498,6 +505,8 @@ class Player {
   double inactive_time{0};
   double join_game_{0};
   double live_time{0};
+
+  bool trying_to_move_{false};
 };
 
 class PlayerTokens {
@@ -554,39 +563,7 @@ class Players {
     return player_tokens_;
   }
 
-  void OnTick(double delta, db::Database* database) {
-    server_uptime_ += delta;
-
-    std::vector<Token> to_remove;
-    for (auto& [token, player] : player_tokens_.GetTokenToPlayer()) {
-      player->CheckActivityDog(delta);
-      auto dog = player->GetDogPlayer();
-
-      if (dog->GetSpeed() == MoveInfo::Speed{} && player->GetStopTime() >= time_wait_) {
-        // Сохраняем рекорд перед удалением
-        auto dog = player->GetDogPlayer();
-        auto play_time = server_uptime_ - player->GetJoinTime();
-
-        if (database) {
-          database->AddRetiredPlayer(dog->GetName(), dog->GetScore(), play_time);
-        }
-
-        to_remove.push_back(token);
-      }
-    }
-
-    // Удаляем пенсионеров
-    for (const auto& token : to_remove) {
-      auto player = player_tokens_.FindPlayerByToken(token);
-      if (player) {
-        auto dog_id = player->GetDogId();
-        auto map_id = player->GetGameSession()->GetMapId();
-        players_.erase({dog_id, *map_id});
-        player->GetGameSession()->DeleteDog(dog_id);
-      }
-      player_tokens_.GetTokenToPlayer().erase(token);
-    }
-  }
+  void OnTick(double delta, db::Database* database);
 
   double GetServerUptime() const {
     return server_uptime_;

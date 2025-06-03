@@ -25,7 +25,8 @@ class Application {
   using milliseconds = std::chrono::milliseconds;
   using TickSignal = boost::signals2::signal<void(milliseconds)>;
 
-  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra, const std::string db_url);
+  explicit Application(model::Game&& game, extra_data::MapsExtra&& extra,
+                       const std::string& db_url);
   ~Application();
 
   model::Game& GetGame();

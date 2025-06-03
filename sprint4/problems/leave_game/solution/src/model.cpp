@@ -554,6 +554,39 @@ Token Players::AddPlayer(std::shared_ptr<Dog> dog, std::shared_ptr<GameSession> 
   return token;
 }
 
+void Players::OnTick(double delta, db::Database* database) {
+  server_uptime_ += delta;
+
+  std::vector<Token> to_remove;
+  for (auto& [token, player] : player_tokens_.GetTokenToPlayer()) {
+    player->CheckActivityDog(delta);
+    auto dog = player->GetDogPlayer();
+
+    if (dog->GetSpeed() == MoveInfo::Speed{} && player->GetStopTime() >= time_wait_) {
+      // Сохраняем рекорд перед удалением
+      auto play_time = server_uptime_ - player->GetJoinTime();
+
+      if (database) {
+        database->AddRetiredPlayer(dog->GetName(), dog->GetScore(), play_time);
+      }
+
+      to_remove.push_back(token);
+    }
+  }
+
+  // Удаляем пенсионеров
+  for (const auto& token : to_remove) {
+    auto player = player_tokens_.FindPlayerByToken(token);
+    if (player) {
+      auto dog_id = player->GetDogId();
+      auto map_id = player->GetGameSession()->GetMapId();
+      players_.erase({dog_id, *map_id});
+      player->GetGameSession()->DeleteDog(dog_id);
+    }
+    player_tokens_.GetTokenToPlayer().erase(token);
+  }
+}
+
 Token PlayerTokens::AddPlayer(std::shared_ptr<Player> player) {
   Token token = GenerateToken();
   AddToken(player, token);
